@@ -42,11 +42,11 @@ def refresh_data(context: ContextTypes.DEFAULT_TYPE):
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Bot ODP Aktif\n\n"
+        "Bot ODP Biznet\n\n"
+        "/menu"
         "/info <ODP>\n"
         "/cari <RK>\n"
         "/list\n"
-        "/menu"
     )
 
 
