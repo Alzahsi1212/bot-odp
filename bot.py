@@ -43,6 +43,7 @@ def refresh_data(context: ContextTypes.DEFAULT_TYPE):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Bot ODP Biznet\n\n"
+        "BOT dibuat sekedar untuk membantu pekerjaan. Maaf jika Bot sering mengalami kendala, jangan cari yang tidak ada :) \n"
         "/menu\n"
         "/info <ODP>\n"
         "/cari <RK>\n"
