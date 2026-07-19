@@ -20,10 +20,32 @@ def normalize(text):
 
 def get_data():
     global cached_df
-    if cached_df is None:
-        cached_df = pd.read_csv(URL)
-    return cached_df
 
+    if cached_df is None:
+        cached_df = pd.read_csv(
+            URL,
+            dtype={
+                "PIN": str,
+                "Port1": str,
+                "Port2": str,
+                "Port3": str,
+                "Port4": str,
+                "Port5": str,
+                "Port6": str,
+                "Port7": str,
+                "Port8": str,
+                "Port9": str,
+                "Port10": str,
+                "Port11": str,
+                "Port12": str,
+                "Port13": str,
+                "Port14": str,
+                "Port15": str,
+                "Port16": str
+            }
+        )
+
+    return cached_df
 
 # =========================
 # AUTO REFRESH (JOBQUEUE FIX)
@@ -31,10 +53,33 @@ def get_data():
 def refresh_data(context: ContextTypes.DEFAULT_TYPE):
     global cached_df
     try:
-        cached_df = pd.read_csv(URL)
+        cached_df = pd.read_csv(
+            URL,
+            dtype={
+                "PIN": str,
+                "Port1": str,
+                "Port2": str,
+                "Port3": str,
+                "Port4": str,
+                "Port5": str,
+                "Port6": str,
+                "Port7": str,
+                "Port8": str,
+                "Port9": str,
+                "Port10": str,
+                "Port11": str,
+                "Port12": str,
+                "Port13": str,
+                "Port14": str,
+                "Port15": str,
+                "Port16": str
+            }
+        )
         print("Data berhasil di-refresh")
+
     except Exception as e:
         print("Gagal refresh:", e)
+
 
 
 # =========================
@@ -160,7 +205,6 @@ async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("📍 Cari RK", callback_data="cari")],
-        [InlineKeyboardButton("📋 List Data", callback_data="list")],
         [InlineKeyboardButton("ℹ️ Info ODP", callback_data="info")]
     ]
 
