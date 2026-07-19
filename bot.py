@@ -120,18 +120,22 @@ async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("RK tidak ditemukan.")
         return
 
-    text = f"📍 LIST ODP RK {rk.upper()}\n\n"
+    # Informasi RK (ditampilkan sekali)
+    text = (
+        f"📍 LIST ODP RK {rk.upper()}\n\n"
+        f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"
+        f"Backbone : {hasil.iloc[0].get('Backbone', '-')}\n"
+        f"Tikor    : {hasil.iloc[0].get('Tikor', '-')}\n\n"
+        f"Daftar ODP:\n"
+    )
 
+    # Daftar ODP
     for _, row in hasil.iterrows():
-        text = (
-    f"📍 LIST ODP RK {rk.upper()}\n\n"
-    f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"
-    f"Backbone : {hasil.iloc[0].get('Backbone', '-')}\n"
-    f"Tikor    : {hasil.iloc[0].get('Tikor', '-')}\n\n"
-)
-
-for _, row in hasil.iterrows():
-    text += f"- {row.get('Nama ODP', '-')} | {row.get('PIU', '-')} | {row.get('Lokasi', '-')}\n"
+        text += (
+            f"- {row.get('Nama ODP', '-')} | "
+            f"{row.get('PIU', '-')} | "
+            f"{row.get('Lokasi', '-')}\n"
+        )
 
     await update.message.reply_text(text)
 
