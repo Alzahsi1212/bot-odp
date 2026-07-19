@@ -47,7 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/menu\n"
         "/info <ODP>\n"
         "/cari <RK>\n"
-        "/list\n"
+        
     )
 
 
@@ -80,6 +80,23 @@ RK       : {row['RK']}
 IP OLT   : {row['IP OLT']}
 PIU      : {row['PIU']}
 Lokasi   : {row['Lokasi']}
+\n
+Port1    : {row['Port1']}
+Port2    : {row['Port2']}
+Port3    : {row['Port3']}
+Port4    : {row['Port4']}
+Port5    : {row['Port5']}
+Port6    : {row['Port6']}
+Port7    : {row['Port7']}
+Port8    : {row['Port8']}
+Port9    : {row['Port9']}
+Port10   : {row['Port10']}
+Port11   : {row['Port11']}
+Port12   : {row['Port12']}
+Port13   : {row['Port13']}
+Port14   : {row['Port14']}
+Port15   : {row['Port15']}
+Port16   : {row['Port16']}
 """
 
     await update.message.reply_text(pesan)
@@ -106,7 +123,15 @@ async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"📍 LIST ODP RK {rk.upper()}\n\n"
 
     for _, row in hasil.iterrows():
-        text += f"- {row['Nama ODP']} | {row['PIU']} | {row['Lokasi']}\n"
+        text = (
+    f"📍 LIST ODP RK {rk.upper()}\n\n"
+    f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"
+    f"Backbone : {hasil.iloc[0].get('Backbone', '-')}\n"
+    f"Tikor    : {hasil.iloc[0].get('Tikor', '-')}\n\n"
+)
+
+for _, row in hasil.iterrows():
+    text += f"- {row.get('Nama ODP', '-')} | {row.get('PIU', '-')} | {row.get('Lokasi', '-')}\n"
 
     await update.message.reply_text(text)
 
