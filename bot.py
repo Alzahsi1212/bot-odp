@@ -18,13 +18,39 @@ from config import TOKEN, OWNER_ID
 # KONFIGURASI
 # =========================================================
 
+# =========================================================
+# GOOGLE SHEET 1 - DATA ODP
+# =========================================================
+
 URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/pub?output=csv"
 
-# Lokasi users.json
+
+# =========================================================
+# GOOGLE SHEET 2 - DATA CUSTOMER
+# =========================================================
+
+CUSTOMER_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/pub?gid=2141022117&single=true&output=csv"
+
+
+# =========================================================
+# LOKASI USERS.JSON
+# =========================================================
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-USERS_FILE = os.path.join(BASE_DIR, "users.json")
+
+USERS_FILE = os.path.join(
+    BASE_DIR,
+    "users.json"
+)
+
+
+# =========================================================
+# CACHE DATA
+# =========================================================
 
 cached_df = None
+
+cached_customer_df = None
 
 
 # =========================================================
@@ -43,11 +69,21 @@ def load_users():
     users.add(int(OWNER_ID))
 
     if not os.path.exists(USERS_FILE):
+
         try:
+
             save_users(users)
-            print("users.json dibuat.")
+
+            print(
+                "users.json dibuat."
+            )
+
         except Exception as e:
-            print("Gagal membuat users.json:", e)
+
+            print(
+                "Gagal membuat users.json:",
+                e
+            )
 
         return users
 
@@ -64,19 +100,28 @@ def load_users():
         for user_id in data:
 
             try:
-                users.add(int(user_id))
+
+                users.add(
+                    int(user_id)
+                )
 
             except (ValueError, TypeError):
+
                 print(
                     f"ID user tidak valid di users.json: {user_id}"
                 )
 
     except Exception as e:
 
-        print("Gagal membaca users.json:", e)
+        print(
+            "Gagal membaca users.json:",
+            e
+        )
 
     # Owner selalu ditambahkan kembali
-    users.add(int(OWNER_ID))
+    users.add(
+        int(OWNER_ID)
+    )
 
     return users
 
@@ -89,7 +134,10 @@ def save_users(users):
     try:
 
         data = sorted(
-            [int(user_id) for user_id in users]
+            [
+                int(user_id)
+                for user_id in users
+            ]
         )
 
         with open(
@@ -123,7 +171,9 @@ def is_allowed(user_id):
 
     try:
 
-        user_id = int(user_id)
+        user_id = int(
+            user_id
+        )
 
     except (ValueError, TypeError):
 
@@ -141,7 +191,10 @@ def is_owner(user_id):
 
     try:
 
-        return int(user_id) == int(OWNER_ID)
+        return (
+            int(user_id)
+            == int(OWNER_ID)
+        )
 
     except (ValueError, TypeError):
 
@@ -194,7 +247,10 @@ def access_required(func):
             f"ID={user.id}"
         )
 
-        return await func(update, context)
+        return await func(
+            update,
+            context
+        )
 
     return wrapper
 
@@ -209,7 +265,7 @@ def normalize(text):
 
 
 # =========================================================
-# GET DATA
+# GET DATA ODP
 # =========================================================
 
 def get_data():
@@ -245,6 +301,24 @@ def get_data():
 
 
 # =========================================================
+# GET DATA CUSTOMER
+# =========================================================
+
+def get_customer_data():
+
+    global cached_customer_df
+
+    if cached_customer_df is None:
+
+        cached_customer_df = pd.read_csv(
+            CUSTOMER_URL,
+            dtype=str
+        ).fillna("")
+
+    return cached_customer_df
+
+
+# =========================================================
 # AUTO REFRESH
 # =========================================================
 
@@ -253,6 +327,11 @@ def refresh_data(
 ):
 
     global cached_df
+    global cached_customer_df
+
+    # =====================================================
+    # REFRESH DATA ODP
+    # =====================================================
 
     try:
 
@@ -280,13 +359,36 @@ def refresh_data(
         )
 
         print(
-            "Data berhasil di-refresh"
+            "Data ODP berhasil di-refresh"
         )
 
     except Exception as e:
 
         print(
-            "Gagal refresh:",
+            "Gagal refresh data ODP:",
+            e
+        )
+
+
+    # =====================================================
+    # REFRESH DATA CUSTOMER
+    # =====================================================
+
+    try:
+
+        cached_customer_df = pd.read_csv(
+            CUSTOMER_URL,
+            dtype=str
+        ).fillna("")
+
+        print(
+            "Data Customer berhasil di-refresh"
+        )
+
+    except Exception as e:
+
+        print(
+            "Gagal refresh data Customer:",
             e
         )
 
@@ -331,6 +433,7 @@ async def start(
         "/menu\n"
         "/info <ODP>\n"
         "/cari <RK>\n"
+        "/hist <Nama/SN/BRIM ID/CUST ID>\n"
         "/list"
     )
 
@@ -471,6 +574,245 @@ async def cari(
 
 
 # =========================================================
+# HIST CUSTOMER
+# =========================================================
+
+@access_required
+async def hist(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "🔎 PENCARIAN CUSTOMER\n\n"
+            "Format:\n"
+            "/hist <kata pencarian>\n\n"
+            "Pencarian berdasarkan:\n"
+            "• Nama\n"
+            "• SN\n"
+            "• BRIM ID\n"
+            "• CUST ID\n\n"
+            "Contoh:\n"
+            "/hist budi\n"
+            "/hist ZTE123\n"
+            "/hist BRM123\n"
+            "/hist CUST456"
+        )
+
+        return
+
+
+    # =====================================================
+    # GABUNGKAN ARGUMENT
+    # =====================================================
+
+    keyword = " ".join(
+        context.args
+    ).strip()
+
+
+    if not keyword:
+
+        await update.message.reply_text(
+            "❌ Kata pencarian tidak boleh kosong."
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL DATA CUSTOMER
+    # =====================================================
+
+    try:
+
+        df = get_customer_data()
+
+    except Exception as e:
+
+        print(
+            "Gagal mengambil data customer:",
+            e
+        )
+
+        await update.message.reply_text(
+            "❌ Gagal membaca data Customer dari Google Sheet."
+        )
+
+        return
+
+
+    # =====================================================
+    # KOLOM YANG DIGUNAKAN UNTUK PENCARIAN
+    # =====================================================
+
+    kolom_cari = [
+        "Nama",
+        "SN",
+        "BRIM ID",
+        "CUST ID"
+    ]
+
+
+    # Cek kolom yang tersedia
+
+    kolom_tersedia = [
+        kolom
+        for kolom in kolom_cari
+        if kolom in df.columns
+    ]
+
+
+    if not kolom_tersedia:
+
+        await update.message.reply_text(
+            "❌ Kolom pencarian tidak ditemukan.\n\n"
+            "Pastikan Sheet 2 memiliki kolom:\n"
+            "Nama\n"
+            "SN\n"
+            "BRIM ID\n"
+            "CUST ID"
+        )
+
+        return
+
+
+    # =====================================================
+    # NORMALIZE KEYWORD
+    # =====================================================
+
+    keyword_normalized = normalize(
+        keyword
+    )
+
+
+    # =====================================================
+    # PARTIAL SEARCH
+    # =====================================================
+
+    mask = pd.Series(
+        False,
+        index=df.index
+    )
+
+
+    for kolom in kolom_tersedia:
+
+        mask = (
+            mask
+            |
+            df[kolom]
+            .astype(str)
+            .str.upper()
+            .str.contains(
+                keyword_normalized,
+                regex=False,
+                na=False
+            )
+        )
+
+
+    hasil = df[mask]
+
+
+    # =====================================================
+    # TIDAK DITEMUKAN
+    # =====================================================
+
+    if hasil.empty:
+
+        await update.message.reply_text(
+            f"❌ DATA CUSTOMER TIDAK DITEMUKAN\n\n"
+            f"Pencarian: {keyword}"
+        )
+
+        return
+
+
+    # =====================================================
+    # BATAS HASIL
+    # =====================================================
+
+    MAX_RESULT = 10
+
+    total = len(hasil)
+
+    hasil_tampil = hasil.head(
+        MAX_RESULT
+    )
+
+
+    # =====================================================
+    # HEADER
+    # =====================================================
+
+    pesan = (
+        "🔎 HASIL PENCARIAN CUSTOMER\n\n"
+        f"Keyword : {keyword}\n"
+        f"Ditemukan : {total} data\n"
+    )
+
+
+    if total > MAX_RESULT:
+
+        pesan += (
+            f"Menampilkan : {MAX_RESULT} data pertama\n"
+        )
+
+
+    pesan += "\n"
+
+
+    # =====================================================
+    # TAMPILKAN DATA
+    # =====================================================
+
+    for i, (_, row) in enumerate(
+        hasil_tampil.iterrows(),
+        start=1
+    ):
+
+        pesan += (
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"👤 CUSTOMER {i}\n\n"
+            f"Tim        : {row.get('Tim', '-')}\n"
+            f"Tanggal    : {row.get('Tanggal', '-')}\n"
+            f"Nama       : {row.get('Nama', '-')}\n"
+            f"BRIM ID    : {row.get('BRIM ID', '-')}\n"
+            f"CUST ID    : {row.get('CUST ID', '-')}\n"
+            f"SN         : {row.get('SN', '-')}\n"
+            f"Layanan    : {row.get('Layanan', '-')}\n"
+            f"Alamat     : {row.get('Alamat', '-')}\n"
+            f"ODP        : {row.get('ODP', '-')}\n"
+            f"Port DP    : {row.get('Port DP', '-')}\n"
+            f"Kabel      : {row.get('Kabel', '-')}\n"
+            f"Tikor      : {row.get('Tikor', '-')}\n"
+            f"Foto Rumah : {row.get('Foto Rumah', '-')}\n\n"
+        )
+
+
+    # =====================================================
+    # KETERANGAN HASIL
+    # =====================================================
+
+    if total > MAX_RESULT:
+
+        pesan += (
+            "━━━━━━━━━━━━━━━━━━\n"
+            f"⚠️ Masih ada {total - MAX_RESULT} "
+            "hasil lainnya.\n"
+            "Persempit kata pencarian untuk hasil lebih spesifik."
+        )
+
+
+    await update.message.reply_text(
+        pesan
+    )
+
+
+# =========================================================
 # LIST
 # =========================================================
 
@@ -508,18 +850,21 @@ async def menu(
 ):
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "📍 Cari RK",
                 callback_data="cari"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "ℹ️ Info ODP",
                 callback_data="info"
             )
         ]
+
     ]
 
     await update.message.reply_text(
@@ -545,7 +890,11 @@ async def button_handler(
 
     await query.answer()
 
-    # Cek akses
+
+    # =====================================================
+    # CEK AKSES
+    # =====================================================
+
     if not is_allowed(user.id):
 
         await query.edit_message_text(
@@ -561,7 +910,13 @@ async def button_handler(
 
         return
 
+
     df = get_data()
+
+
+    # =====================================================
+    # LIST
+    # =====================================================
 
     if query.data == "list":
 
@@ -578,6 +933,11 @@ async def button_handler(
             text
         )
 
+
+    # =====================================================
+    # CARI RK
+    # =====================================================
+
     elif query.data == "cari":
 
         await query.edit_message_text(
@@ -586,6 +946,11 @@ async def button_handler(
             "Contoh:\n"
             "/cari KMR"
         )
+
+
+    # =====================================================
+    # INFO ODP
+    # =====================================================
 
     elif query.data == "info":
 
@@ -608,7 +973,9 @@ async def adduser(
 
     user = update.effective_user
 
+
     # Hanya OWNER
+
     if not is_owner(user.id):
 
         await update.message.reply_text(
@@ -617,6 +984,7 @@ async def adduser(
         )
 
         return
+
 
     if not context.args:
 
@@ -628,6 +996,7 @@ async def adduser(
         )
 
         return
+
 
     try:
 
@@ -643,10 +1012,14 @@ async def adduser(
 
         return
 
+
     # Baca daftar terbaru
+
     allowed_users = load_users()
 
+
     # Cek apakah sudah ada
+
     if new_user_id in allowed_users:
 
         await update.message.reply_text(
@@ -657,18 +1030,25 @@ async def adduser(
 
         return
 
+
     # Tambahkan
+
     allowed_users.add(
         new_user_id
     )
 
+
     # Simpan
+
     save_users(
         allowed_users
     )
 
+
     # Verifikasi setelah disimpan
+
     verify_users = load_users()
+
 
     if new_user_id in verify_users:
 
@@ -704,6 +1084,7 @@ async def deluser(
 
     user = update.effective_user
 
+
     if not is_owner(user.id):
 
         await update.message.reply_text(
@@ -712,6 +1093,7 @@ async def deluser(
         )
 
         return
+
 
     if not context.args:
 
@@ -723,6 +1105,7 @@ async def deluser(
         )
 
         return
+
 
     try:
 
@@ -738,8 +1121,10 @@ async def deluser(
 
         return
 
+
     # Owner tidak boleh dihapus
-    if delete_user_id == OWNER_ID:
+
+    if delete_user_id == int(OWNER_ID):
 
         await update.message.reply_text(
             "❌ Owner tidak dapat dihapus."
@@ -747,7 +1132,9 @@ async def deluser(
 
         return
 
+
     allowed_users = load_users()
+
 
     if delete_user_id not in allowed_users:
 
@@ -759,19 +1146,23 @@ async def deluser(
 
         return
 
+
     allowed_users.remove(
         delete_user_id
     )
 
+
     save_users(
         allowed_users
     )
+
 
     await update.message.reply_text(
         f"✅ AKSES USER DICABUT\n\n"
         f"Telegram ID: `{delete_user_id}`",
         parse_mode="Markdown"
     )
+
 
     print(
         f"[USER REMOVED] "
@@ -791,6 +1182,7 @@ async def users(
 
     user = update.effective_user
 
+
     if not is_owner(user.id):
 
         await update.message.reply_text(
@@ -800,18 +1192,22 @@ async def users(
 
         return
 
+
     # Selalu baca data terbaru
+
     allowed_users = load_users()
+
 
     text = (
         "👥 USER YANG MEMILIKI AKSES\n\n"
     )
 
+
     for user_id in sorted(
         allowed_users
     ):
 
-        if user_id == OWNER_ID:
+        if user_id == int(OWNER_ID):
 
             text += (
                 f"👑 `{user_id}` — OWNER\n"
@@ -823,10 +1219,12 @@ async def users(
                 f"👤 `{user_id}`\n"
             )
 
+
     text += (
         f"\nTotal user: "
         f"{len(allowed_users)}"
     )
+
 
     await update.message.reply_text(
         text,
@@ -840,7 +1238,10 @@ async def users(
 
 def main():
 
-    # Cek OWNER_ID
+    # =====================================================
+    # CEK KONFIGURASI
+    # =====================================================
+
     print(
         "================================="
     )
@@ -865,6 +1266,11 @@ def main():
         "================================="
     )
 
+
+    # =====================================================
+    # BUILD APPLICATION
+    # =====================================================
+
     app = (
         Application
         .builder()
@@ -872,9 +1278,10 @@ def main():
         .build()
     )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # COMMAND USER
-    # -----------------------------------------------------
+    # =====================================================
 
     app.add_handler(
         CommandHandler(
@@ -883,12 +1290,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "info",
             info
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -897,12 +1306,26 @@ def main():
         )
     )
 
+
+    # =====================================================
+    # COMMAND BARU - HIST CUSTOMER
+    # =====================================================
+
+    app.add_handler(
+        CommandHandler(
+            "hist",
+            hist
+        )
+    )
+
+
     app.add_handler(
         CommandHandler(
             "list",
             list_all
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -911,10 +1334,11 @@ def main():
         )
     )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # CEK TELEGRAM ID
     # Bisa digunakan siapa saja
-    # -----------------------------------------------------
+    # =====================================================
 
     app.add_handler(
         CommandHandler(
@@ -923,9 +1347,10 @@ def main():
         )
     )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # COMMAND OWNER
-    # -----------------------------------------------------
+    # =====================================================
 
     app.add_handler(
         CommandHandler(
@@ -934,12 +1359,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "deluser",
             deluser
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -948,9 +1375,10 @@ def main():
         )
     )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # BUTTON
-    # -----------------------------------------------------
+    # =====================================================
 
     app.add_handler(
         CallbackQueryHandler(
@@ -958,11 +1386,13 @@ def main():
         )
     )
 
-    # -----------------------------------------------------
+
+    # =====================================================
     # AUTO REFRESH
-    # -----------------------------------------------------
+    # =====================================================
 
     job_queue = app.job_queue
+
 
     job_queue.run_repeating(
         refresh_data,
@@ -970,13 +1400,15 @@ def main():
         first=5
     )
 
+
+    # =====================================================
+    # RUN BOT
+    # =====================================================
+
     print(
         "Bot berjalan 🚀"
     )
 
-    # -----------------------------------------------------
-    # RUN
-    # -----------------------------------------------------
 
     app.run_polling(
         drop_pending_updates=True
@@ -988,4 +1420,5 @@ def main():
 # =========================================================
 
 if __name__ == "__main__":
+
     main()
