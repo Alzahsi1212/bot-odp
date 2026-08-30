@@ -1,9 +1,18 @@
 import pandas as pd
 import os
 import json
+import base64
+import io
+import requests
+
 from functools import wraps
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -18,18 +27,62 @@ from config import TOKEN, OWNER_ID
 # KONFIGURASI
 # =========================================================
 
+
 # =========================================================
 # GOOGLE SHEET 1 - DATA ODP
 # =========================================================
 
-URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/pub?output=csv"
+URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/"
+    "pub?output=csv"
+)
 
 
 # =========================================================
 # GOOGLE SHEET 2 - DATA CUSTOMER
 # =========================================================
 
-CUSTOMER_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/pub?gid=2141022117&single=true&output=csv"
+CUSTOMER_URL = (
+    "https://docs.google.com/spreadsheets/d/e/"
+    "2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/"
+    "pub?gid=2141022117&single=true&output=csv"
+)
+
+
+# =========================================================
+# GOOGLE APPS SCRIPT - FOTO CUSTOMER
+# =========================================================
+#
+# MASUKKAN URL WEB APP APPS SCRIPT ANDA DI SINI.
+#
+# Contoh:
+#
+# PHOTO_API_URL = "https://script.google.com/macros/s/XXXXXXXXXXXX/exec"
+#
+# Jangan menggunakan URL Google Sheet.
+# Yang digunakan adalah URL deployment Web App Apps Script.
+#
+
+PHOTO_API_URL = (
+    "PASTE_URL_WEB_APP_APPS_SCRIPT_ANDA_DI_SINI"
+)
+
+
+# =========================================================
+# API KEY
+# =========================================================
+#
+# Harus sama dengan API_KEY di Apps Script.
+#
+# Contoh:
+#
+# API_KEY = "ODP_BOT_2026_RAHASIA"
+#
+
+API_KEY = (
+    "ODP_BOT_2026_RAHASIA"
+)
 
 
 # =========================================================
@@ -60,14 +113,10 @@ cached_customer_df = None
 # =========================================================
 
 def load_users():
-    """
-    Membaca daftar Telegram ID dari users.json.
-    Owner selalu otomatis memiliki akses.
-    """
 
     users = set()
 
-    # Owner selalu boleh akses
+    # Owner selalu memiliki akses
     users.add(
         int(OWNER_ID)
     )
@@ -109,7 +158,10 @@ def load_users():
                     int(user_id)
                 )
 
-            except (ValueError, TypeError):
+            except (
+                ValueError,
+                TypeError
+            ):
 
                 print(
                     f"ID user tidak valid di users.json: {user_id}"
@@ -122,7 +174,7 @@ def load_users():
             e
         )
 
-    # Owner selalu ditambahkan kembali
+    # Owner selalu ditambahkan
     users.add(
         int(OWNER_ID)
     )
@@ -130,10 +182,11 @@ def load_users():
     return users
 
 
+# =========================================================
+# SAVE USERS
+# =========================================================
+
 def save_users(users):
-    """
-    Menyimpan daftar Telegram ID ke users.json.
-    """
 
     try:
 
@@ -168,10 +221,11 @@ def save_users(users):
         )
 
 
+# =========================================================
+# IS ALLOWED
+# =========================================================
+
 def is_allowed(user_id):
-    """
-    Cek akses dengan membaca users.json terbaru.
-    """
 
     try:
 
@@ -179,7 +233,10 @@ def is_allowed(user_id):
             user_id
         )
 
-    except (ValueError, TypeError):
+    except (
+        ValueError,
+        TypeError
+    ):
 
         return False
 
@@ -188,10 +245,11 @@ def is_allowed(user_id):
     return user_id in allowed_users
 
 
+# =========================================================
+# IS OWNER
+# =========================================================
+
 def is_owner(user_id):
-    """
-    Mengecek apakah Telegram ID adalah owner.
-    """
 
     try:
 
@@ -200,7 +258,10 @@ def is_owner(user_id):
             == int(OWNER_ID)
         )
 
-    except (ValueError, TypeError):
+    except (
+        ValueError,
+        TypeError
+    ):
 
         return False
 
@@ -228,8 +289,9 @@ def access_required(func):
             f"Username=@{user.username}"
         )
 
-        # Cek akses terbaru
-        if not is_allowed(user.id):
+        if not is_allowed(
+            user.id
+        ):
 
             if update.message:
 
@@ -378,7 +440,7 @@ def refresh_data(
 
 
     # =====================================================
-    # REFRESH DATA CUSTOMER
+    # REFRESH CUSTOMER
     # =====================================================
 
     try:
@@ -440,7 +502,7 @@ async def start(
         "/menu\n"
         "/info <ODP>\n"
         "/cari <RK>\n"
-        "/hist <Nama/SN/BRIM ID/CUST ID>\n"
+        "/hist <Nama/SN/BRIM ID/CUST ID>"
     )
 
 
@@ -571,9 +633,9 @@ async def cari(
     for _, row in hasil.iterrows():
 
         text += (
-            f"- {row.get('Nama ODP', '-')} | "
-            f"{row.get('PIU', '-')} | "
-            f"{row.get('Lokasi', '-')}\n"
+            f"- {row.get('Nama ODP', '-')}"
+            f" | {row.get('PIU', '-')}"
+            f" | {row.get('Lokasi', '-')}\n"
         )
 
     await update.message.reply_text(
@@ -582,111 +644,13 @@ async def cari(
 
 
 # =========================================================
-# HIST CUSTOMER
+# BUILD HIST RESULT
 # =========================================================
 
-@access_required
-async def hist(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+def build_hist_result(
+    df,
+    keyword
 ):
-
-    if not context.args:
-
-        await update.message.reply_text(
-            "🔎 PENCARIAN CUSTOMER\n\n"
-            "Format:\n"
-            "/hist <kata pencarian>\n\n"
-            "Pencarian berdasarkan:\n"
-            "• Nama → sebagian nama\n"
-            "• SN → harus sama persis\n"
-            "• BRIM ID → harus sama persis\n"
-            "• CUST ID → harus sama persis\n\n"
-            "Contoh:\n"
-            "/hist budi\n"
-            "/hist ZTE123456\n"
-            "/hist BRM123456\n"
-            "/hist CUST123456"
-        )
-
-        return
-
-
-    # =====================================================
-    # KEYWORD
-    # =====================================================
-
-    keyword = " ".join(
-        context.args
-    ).strip()
-
-
-    if not keyword:
-
-        await update.message.reply_text(
-            "❌ Kata pencarian tidak boleh kosong."
-        )
-
-        return
-
-
-    # =====================================================
-    # AMBIL DATA CUSTOMER
-    # =====================================================
-
-    try:
-
-        df = get_customer_data()
-
-    except Exception as e:
-
-        print(
-            "Gagal mengambil data customer:",
-            e
-        )
-
-        await update.message.reply_text(
-            "❌ Gagal membaca data Customer dari Google Sheet."
-        )
-
-        return
-
-
-    # =====================================================
-    # CEK KOLOM
-    # =====================================================
-
-    kolom_wajib = [
-        "Nama",
-        "SN",
-        "BRIM ID",
-        "CUST ID"
-    ]
-
-
-    kolom_tidak_ada = [
-        kolom
-        for kolom in kolom_wajib
-        if kolom not in df.columns
-    ]
-
-
-    if kolom_tidak_ada:
-
-        await update.message.reply_text(
-            "❌ Kolom berikut tidak ditemukan di Sheet 2:\n\n"
-            +
-            "\n".join(
-                kolom_tidak_ada
-            )
-        )
-
-        return
-
-
-    # =====================================================
-    # NORMALIZE KEYWORD
-    # =====================================================
 
     keyword_normalized = normalize(
         keyword
@@ -752,10 +716,10 @@ async def hist(
 
 
     # =====================================================
-    # GABUNGKAN HASIL
+    # GABUNGKAN
     # =====================================================
 
-    mask = (
+    return df[
         mask_nama
         |
         mask_sn
@@ -763,15 +727,151 @@ async def hist(
         mask_brim
         |
         mask_cust
+    ]
+
+
+# =========================================================
+# BUILD HIST KEYBOARD
+# =========================================================
+
+def build_hist_keyboard(
+    hasil
+):
+
+    keyboard = []
+
+    for index, row in hasil.iterrows():
+
+        nama = str(
+            row.get(
+                "Nama",
+                "-"
+            )
+        ).strip()
+
+        cust_id = str(
+            row.get(
+                "CUST ID",
+                "-"
+            )
+        ).strip()
+
+
+        # Telegram callback_data maksimal 64 byte.
+        # Index dataframe biasanya cukup pendek.
+        callback_data = (
+            f"hist_detail:{index}"
+        )
+
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"👤 {nama} | {cust_id}",
+                    callback_data=callback_data
+                )
+            ]
+        )
+
+    return keyboard
+
+
+# =========================================================
+# HIST CUSTOMER
+# =========================================================
+
+@access_required
+async def hist(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "🔎 PENCARIAN CUSTOMER\n\n"
+            "Format:\n"
+            "/hist <kata pencarian>\n\n"
+            "Pencarian berdasarkan:\n"
+            "• Nama → sebagian nama\n"
+            "• SN → sama persis\n"
+            "• BRIM ID → sama persis\n"
+            "• CUST ID → sama persis\n\n"
+            "Contoh:\n"
+            "/hist budi\n"
+            "/hist ZTE123456\n"
+            "/hist BRM123456\n"
+            "/hist CUST123456"
+        )
+
+        return
+
+
+    keyword = " ".join(
+        context.args
+    ).strip()
+
+
+    if not keyword:
+
+        await update.message.reply_text(
+            "❌ Kata pencarian tidak boleh kosong."
+        )
+
+        return
+
+
+    try:
+
+        df = get_customer_data()
+
+    except Exception as e:
+
+        print(
+            "Gagal mengambil data customer:",
+            e
+        )
+
+        await update.message.reply_text(
+            "❌ Gagal membaca data Customer dari Google Sheet."
+        )
+
+        return
+
+
+    kolom_wajib = [
+        "Nama",
+        "SN",
+        "BRIM ID",
+        "CUST ID"
+    ]
+
+
+    kolom_tidak_ada = [
+        kolom
+        for kolom in kolom_wajib
+        if kolom not in df.columns
+    ]
+
+
+    if kolom_tidak_ada:
+
+        await update.message.reply_text(
+            "❌ Kolom berikut tidak ditemukan di Sheet2:\n\n"
+            +
+            "\n".join(
+                kolom_tidak_ada
+            )
+        )
+
+        return
+
+
+    hasil = build_hist_result(
+        df,
+        keyword
     )
 
-
-    hasil = df[mask]
-
-
-    # =====================================================
-    # TIDAK DITEMUKAN
-    # =====================================================
 
     if hasil.empty:
 
@@ -784,7 +884,7 @@ async def hist(
 
 
     # =====================================================
-    # SIMPAN KEYWORD UNTUK TOMBOL KEMBALI
+    # SIMPAN KEYWORD
     # =====================================================
 
     context.user_data[
@@ -793,61 +893,21 @@ async def hist(
 
 
     # =====================================================
-    # BUAT BUTTON
+    # SIMPAN INDEX HASIL
     # =====================================================
 
-    keyboard = []
+    context.user_data[
+        "hist_indexes"
+    ] = [
+        int(index)
+        for index in hasil.index
+    ]
 
 
-    for index, row in hasil.iterrows():
+    keyboard = build_hist_keyboard(
+        hasil
+    )
 
-        nama = str(
-            row.get(
-                "Nama",
-                "-"
-            )
-        ).strip()
-
-
-        cust_id = str(
-            row.get(
-                "CUST ID",
-                "-"
-            )
-        ).strip()
-
-
-        # ---------------------------------------------
-        # TEKS BUTTON
-        # ---------------------------------------------
-
-        button_text = (
-            f"👤 {nama} | {cust_id}"
-        )
-
-
-        # ---------------------------------------------
-        # CALLBACK DATA
-        # ---------------------------------------------
-
-        callback_data = (
-            f"hist_detail:{index}"
-        )
-
-
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    button_text,
-                    callback_data=callback_data
-                )
-            ]
-        )
-
-
-    # =====================================================
-    # HEADER
-    # =====================================================
 
     text = (
         "🔎 HASIL PENCARIAN CUSTOMER\n\n"
@@ -857,15 +917,160 @@ async def hist(
     )
 
 
-    # =====================================================
-    # KIRIM BUTTON
-    # =====================================================
-
     await update.message.reply_text(
         text,
         reply_markup=InlineKeyboardMarkup(
             keyboard
         )
+    )
+
+
+# =========================================================
+# GET PHOTO FROM APPS SCRIPT
+# =========================================================
+
+def get_customer_photo(
+    cust_id
+):
+
+    if (
+        not PHOTO_API_URL
+        or
+        PHOTO_API_URL.startswith(
+            "PASTE_"
+        )
+    ):
+
+        print(
+            "PHOTO_API_URL belum dikonfigurasi."
+        )
+
+        return None
+
+
+    try:
+
+        response = requests.get(
+            PHOTO_API_URL,
+            params={
+                "cust_id": str(cust_id),
+                "api_key": API_KEY
+            },
+            timeout=30
+        )
+
+
+        print(
+            f"[PHOTO API] "
+            f"HTTP={response.status_code}"
+        )
+
+
+        if response.status_code != 200:
+
+            print(
+                "PHOTO API error:",
+                response.text[:500]
+            )
+
+            return None
+
+
+        result = response.json()
+
+
+        if not result.get(
+            "success",
+            False
+        ):
+
+            print(
+                "PHOTO API gagal:",
+                result.get(
+                    "error",
+                    "Unknown error"
+                )
+            )
+
+            return None
+
+
+        image_base64 = result.get(
+            "image_base64"
+        )
+
+
+        if not image_base64:
+
+            print(
+                "PHOTO API: image_base64 kosong."
+            )
+
+            return None
+
+
+        image_bytes = base64.b64decode(
+            image_base64
+        )
+
+
+        mime_type = result.get(
+            "mime_type",
+            "image/jpeg"
+        )
+
+
+        extension = (
+            "jpg"
+            if mime_type == "image/jpeg"
+            else
+            "png"
+            if mime_type == "image/png"
+            else
+            "jpg"
+        )
+
+
+        return (
+            image_bytes,
+            mime_type,
+            extension
+        )
+
+
+    except Exception as e:
+
+        print(
+            "Gagal mengambil foto customer:",
+            e
+        )
+
+        return None
+
+
+# =========================================================
+# BUILD CUSTOMER DETAIL
+# =========================================================
+
+def build_customer_detail(
+    row
+):
+
+    return (
+        "👤 DETAIL CUSTOMER\n\n"
+
+        f"Tim        : {row.get('Tim', '-')}\n"
+        f"Tanggal    : {row.get('Tanggal', '-')}\n"
+        f"Nama       : {row.get('Nama', '-')}\n"
+        f"BRIM ID    : {row.get('BRIM ID', '-')}\n"
+        f"CUST ID    : {row.get('CUST ID', '-')}\n"
+        f"SN         : {row.get('SN', '-')}\n"
+        f"Layanan    : {row.get('Layanan', '-')}\n"
+        f"Alamat     : {row.get('Alamat', '-')}\n"
+        f"ODP        : {row.get('ODP', '-')}\n"
+        f"Port DP    : {row.get('Port DP', '-')}\n"
+        f"Kabel      : {row.get('Kabel', '-')}\n"
+        f"Tikor      : {row.get('Tikor', '-')}\n"
     )
 
 
@@ -889,7 +1094,9 @@ async def hist_detail_handler(
     # CEK AKSES
     # =====================================================
 
-    if not is_allowed(user.id):
+    if not is_allowed(
+        user.id
+    ):
 
         await query.edit_message_text(
             "⛔️ AKSES DITOLAK\n\n"
@@ -906,7 +1113,10 @@ async def hist_detail_handler(
     try:
 
         index = int(
-            query.data.split(":")[1]
+            query.data.split(
+                ":",
+                1
+            )[1]
         )
 
     except Exception:
@@ -919,7 +1129,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # AMBIL DATA CUSTOMER
+    # AMBIL DATA
     # =====================================================
 
     try:
@@ -957,24 +1167,11 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # DETAIL CUSTOMER
+    # DETAIL
     # =====================================================
 
-    pesan = (
-        "👤 DETAIL CUSTOMER\n\n"
-        f"Tim        : {row.get('Tim', '-')}\n"
-        f"Tanggal    : {row.get('Tanggal', '-')}\n"
-        f"Nama       : {row.get('Nama', '-')}\n"
-        f"BRIM ID    : {row.get('BRIM ID', '-')}\n"
-        f"CUST ID    : {row.get('CUST ID', '-')}\n"
-        f"SN         : {row.get('SN', '-')}\n"
-        f"Layanan    : {row.get('Layanan', '-')}\n"
-        f"Alamat     : {row.get('Alamat', '-')}\n"
-        f"ODP        : {row.get('ODP', '-')}\n"
-        f"Port DP    : {row.get('Port DP', '-')}\n"
-        f"Kabel      : {row.get('Kabel', '-')}\n"
-        f"Tikor      : {row.get('Tikor', '-')}\n"
-        f"Foto Rumah : {row.get('Foto Rumah', '-')}"
+    pesan = build_customer_detail(
+        row
     )
 
 
@@ -994,12 +1191,122 @@ async def hist_detail_handler(
     ]
 
 
-    await query.edit_message_text(
-        pesan,
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        )
+    reply_markup = InlineKeyboardMarkup(
+        keyboard
     )
+
+
+    # =====================================================
+    # EDIT PESAN MENJADI DETAIL
+    # =====================================================
+
+    try:
+
+        await query.edit_message_text(
+            pesan,
+            reply_markup=reply_markup
+        )
+
+    except Exception as e:
+
+        print(
+            "Gagal edit detail:",
+            e
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL CUST ID
+    # =====================================================
+
+    cust_id = str(
+        row.get(
+            "CUST ID",
+            ""
+        )
+    ).strip()
+
+
+    if not cust_id:
+
+        await query.message.reply_text(
+            "⚠️ CUST ID kosong, foto tidak dapat dicari."
+        )
+
+        return
+
+
+    # =====================================================
+    # CEK FOTO
+    # =====================================================
+
+    await query.message.reply_text(
+        "🔄 Mencari foto rumah..."
+    )
+
+
+    photo_result = get_customer_photo(
+        cust_id
+    )
+
+
+    if not photo_result:
+
+        await query.message.reply_text(
+            "📷 Foto Rumah tidak tersedia."
+        )
+
+        return
+
+
+    image_bytes, mime_type, extension = (
+        photo_result
+    )
+
+
+    # =====================================================
+    # KIRIM FOTO
+    # =====================================================
+
+    try:
+
+        photo_file = io.BytesIO(
+            image_bytes
+        )
+
+
+        photo_file.name = (
+            f"foto_rumah_{cust_id}.{extension}"
+        )
+
+
+        await query.message.reply_photo(
+            photo=photo_file,
+            caption=(
+                f"📷 Foto Rumah\n"
+                f"CUST ID: {cust_id}"
+            )
+        )
+
+
+        print(
+            f"[PHOTO SENT] "
+            f"CUST ID={cust_id}"
+        )
+
+
+    except Exception as e:
+
+        print(
+            "Gagal mengirim foto Telegram:",
+            e
+        )
+
+        await query.message.reply_text(
+            "❌ Foto ditemukan, tetapi gagal dikirim ke Telegram."
+        )
 
 
 # =========================================================
@@ -1022,7 +1329,9 @@ async def hist_back_handler(
     # CEK AKSES
     # =====================================================
 
-    if not is_allowed(user.id):
+    if not is_allowed(
+        user.id
+    ):
 
         await query.edit_message_text(
             "⛔️ AKSES DITOLAK\n\n"
@@ -1033,7 +1342,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # AMBIL KEYWORD SEBELUMNYA
+    # KEYWORD
     # =====================================================
 
     keyword = context.user_data.get(
@@ -1051,7 +1360,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # AMBIL DATA
+    # DATA
     # =====================================================
 
     try:
@@ -1073,85 +1382,13 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # NORMALIZE
-    # =====================================================
-
-    keyword_normalized = normalize(
-        keyword
-    )
-
-
-    # =====================================================
-    # NAMA = PARTIAL
-    # =====================================================
-
-    mask_nama = (
-        df["Nama"]
-        .astype(str)
-        .str.upper()
-        .str.contains(
-            keyword_normalized,
-            regex=False,
-            na=False
-        )
-    )
-
-
-    # =====================================================
-    # SN = EXACT
-    # =====================================================
-
-    mask_sn = (
-        df["SN"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        ==
-        keyword_normalized
-    )
-
-
-    # =====================================================
-    # BRIM ID = EXACT
-    # =====================================================
-
-    mask_brim = (
-        df["BRIM ID"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        ==
-        keyword_normalized
-    )
-
-
-    # =====================================================
-    # CUST ID = EXACT
-    # =====================================================
-
-    mask_cust = (
-        df["CUST ID"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        ==
-        keyword_normalized
-    )
-
-
-    # =====================================================
     # HASIL
     # =====================================================
 
-    hasil = df[
-        mask_nama
-        |
-        mask_sn
-        |
-        mask_brim
-        |
-        mask_cust
-    ]
+    hasil = build_hist_result(
+        df,
+        keyword
+    )
 
 
     if hasil.empty:
@@ -1164,43 +1401,25 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # BUAT BUTTON
+    # UPDATE INDEX
     # =====================================================
 
-    keyboard = []
-
-
-    for index, row in hasil.iterrows():
-
-        nama = str(
-            row.get(
-                "Nama",
-                "-"
-            )
-        ).strip()
-
-
-        cust_id = str(
-            row.get(
-                "CUST ID",
-                "-"
-            )
-        ).strip()
-
-
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    f"👤 {nama} | {cust_id}",
-                    callback_data=f"hist_detail:{index}"
-                )
-            ]
-        )
+    context.user_data[
+        "hist_indexes"
+    ] = [
+        int(index)
+        for index in hasil.index
+    ]
 
 
     # =====================================================
-    # HEADER
+    # KEYBOARD
     # =====================================================
+
+    keyboard = build_hist_keyboard(
+        hasil
+    )
+
 
     text = (
         "🔎 HASIL PENCARIAN CUSTOMER\n\n"
@@ -1230,7 +1449,9 @@ async def list_all(
 
     df = get_data()
 
-    text = "📋 SEMUA DATA ODP\n\n"
+    text = (
+        "📋 SEMUA DATA ODP\n\n"
+    )
 
     for _, row in df.iterrows():
 
@@ -1270,13 +1491,13 @@ async def menu(
                 callback_data="info"
             )
         ],
+
         [
             InlineKeyboardButton(
-                " History Customer",
+                "📋 History Customer",
                 callback_data="hist"
             )
         ]
-        
 
     ]
 
@@ -1309,7 +1530,9 @@ async def button_handler(
     # CEK AKSES
     # =====================================================
 
-    if not is_allowed(user.id):
+    if not is_allowed(
+        user.id
+    ):
 
         await query.edit_message_text(
             "⛔️ AKSES DITOLAK\n\n"
@@ -1325,34 +1548,11 @@ async def button_handler(
         return
 
 
-    df = get_data()
-
-
-    # =====================================================
-    # LIST
-    # =====================================================
-
-    if query.data == "list":
-
-        text = "📋 LIST DATA\n\n"
-
-        text += "\n".join(
-            [
-                f"{r['Nama ODP']} | {r['RK']}"
-                for _, r in df.iterrows()
-            ]
-        )
-
-        await query.edit_message_text(
-            text
-        )
-
-
     # =====================================================
     # CARI RK
     # =====================================================
 
-    elif query.data == "cari":
+    if query.data == "cari":
 
         await query.edit_message_text(
             "Gunakan:\n"
@@ -1361,12 +1561,14 @@ async def button_handler(
             "/cari KMR"
         )
 
+        return
+
 
     # =====================================================
     # INFO ODP
     # =====================================================
 
-    elif query.data == "info":
+    if query.data == "info":
 
         await query.edit_message_text(
             "Gunakan:\n"
@@ -1374,6 +1576,26 @@ async def button_handler(
             "Contoh:\n"
             "/info KMR010101"
         )
+
+        return
+
+
+    # =====================================================
+    # HIST
+    # =====================================================
+
+    if query.data == "hist":
+
+        await query.edit_message_text(
+            "🔎 HISTORY CUSTOMER\n\n"
+            "Gunakan:\n"
+            "/hist <kata pencarian>\n\n"
+            "Contoh:\n"
+            "/hist budi\n"
+            "/hist CUST123456"
+        )
+
+        return
 
 
 # =========================================================
@@ -1388,9 +1610,9 @@ async def adduser(
     user = update.effective_user
 
 
-    # Hanya OWNER
-
-    if not is_owner(user.id):
+    if not is_owner(
+        user.id
+    ):
 
         await update.message.reply_text(
             "⛔️ AKSES DITOLAK\n\n"
@@ -1427,12 +1649,8 @@ async def adduser(
         return
 
 
-    # Baca daftar terbaru
-
     allowed_users = load_users()
 
-
-    # Cek apakah sudah ada
 
     if new_user_id in allowed_users:
 
@@ -1445,21 +1663,15 @@ async def adduser(
         return
 
 
-    # Tambahkan
-
     allowed_users.add(
         new_user_id
     )
 
 
-    # Simpan
-
     save_users(
         allowed_users
     )
 
-
-    # Verifikasi setelah disimpan
 
     verify_users = load_users()
 
@@ -1499,7 +1711,9 @@ async def deluser(
     user = update.effective_user
 
 
-    if not is_owner(user.id):
+    if not is_owner(
+        user.id
+    ):
 
         await update.message.reply_text(
             "⛔️ AKSES DITOLAK\n\n"
@@ -1536,9 +1750,9 @@ async def deluser(
         return
 
 
-    # Owner tidak boleh dihapus
-
-    if delete_user_id == int(OWNER_ID):
+    if delete_user_id == int(
+        OWNER_ID
+    ):
 
         await update.message.reply_text(
             "❌ Owner tidak dapat dihapus."
@@ -1597,7 +1811,9 @@ async def users(
     user = update.effective_user
 
 
-    if not is_owner(user.id):
+    if not is_owner(
+        user.id
+    ):
 
         await update.message.reply_text(
             "⛔️ AKSES DITOLAK\n\n"
@@ -1606,8 +1822,6 @@ async def users(
 
         return
 
-
-    # Selalu baca data terbaru
 
     allowed_users = load_users()
 
@@ -1621,7 +1835,9 @@ async def users(
         allowed_users
     ):
 
-        if user_id == int(OWNER_ID):
+        if user_id == int(
+            OWNER_ID
+        ):
 
             text += (
                 f"👑 `{user_id}` — OWNER\n"
@@ -1651,10 +1867,6 @@ async def users(
 # =========================================================
 
 def main():
-
-    # =====================================================
-    # CEK KONFIGURASI
-    # =====================================================
 
     print(
         "================================="
@@ -1694,7 +1906,7 @@ def main():
 
 
     # =====================================================
-    # COMMAND USER
+    # COMMAND
     # =====================================================
 
     app.add_handler(
@@ -1721,10 +1933,6 @@ def main():
     )
 
 
-    # =====================================================
-    # COMMAND HIST CUSTOMER
-    # =====================================================
-
     app.add_handler(
         CommandHandler(
             "hist",
@@ -1750,8 +1958,7 @@ def main():
 
 
     # =====================================================
-    # CEK TELEGRAM ID
-    # Bisa digunakan siapa saja
+    # MY ID
     # =====================================================
 
     app.add_handler(
@@ -1763,7 +1970,7 @@ def main():
 
 
     # =====================================================
-    # COMMAND OWNER
+    # OWNER
     # =====================================================
 
     app.add_handler(
@@ -1791,8 +1998,7 @@ def main():
 
 
     # =====================================================
-    # BUTTON HIST DETAIL
-    # HARUS SEBELUM BUTTON HANDLER UMUM
+    # HIST DETAIL
     # =====================================================
 
     app.add_handler(
@@ -1804,7 +2010,7 @@ def main():
 
 
     # =====================================================
-    # BUTTON HIST BACK
+    # HIST BACK
     # =====================================================
 
     app.add_handler(
@@ -1841,7 +2047,7 @@ def main():
 
 
     # =====================================================
-    # RUN BOT
+    # RUN
     # =====================================================
 
     print(
