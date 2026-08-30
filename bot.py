@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import json
+from functools import wraps
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -19,83 +20,132 @@ from config import TOKEN, OWNER_ID
 
 URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/pub?output=csv"
 
-# File untuk menyimpan daftar user
-USERS_FILE = "users.json"
+# Lokasi users.json
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_FILE = os.path.join(BASE_DIR, "users.json")
 
-# Cache data Google Sheet
 cached_df = None
 
 
 # =========================================================
-# USER ACCESS / WHITELIST
+# USER ACCESS
 # =========================================================
 
 def load_users():
     """
-    Membaca daftar Telegram ID yang diizinkan.
+    Membaca daftar Telegram ID dari users.json.
+    Owner selalu otomatis memiliki akses.
     """
 
+    users = set()
+
+    # Owner selalu boleh akses
+    users.add(int(OWNER_ID))
+
     if not os.path.exists(USERS_FILE):
-
-        users = [OWNER_ID]
-
         try:
-            with open(USERS_FILE, "w", encoding="utf-8") as f:
-                json.dump(users, f, indent=4)
-
+            save_users(users)
+            print("users.json dibuat.")
         except Exception as e:
             print("Gagal membuat users.json:", e)
 
-        return set(users)
+        return users
 
     try:
 
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            users = json.load(f)
+        with open(
+            USERS_FILE,
+            "r",
+            encoding="utf-8"
+        ) as f:
 
-        users = set(int(user_id) for user_id in users)
+            data = json.load(f)
 
-        # Owner selalu mendapatkan akses
-        users.add(OWNER_ID)
+        for user_id in data:
 
-        return users
+            try:
+                users.add(int(user_id))
+
+            except (ValueError, TypeError):
+                print(
+                    f"ID user tidak valid di users.json: {user_id}"
+                )
 
     except Exception as e:
 
         print("Gagal membaca users.json:", e)
 
-        # Jika file bermasalah, owner tetap memiliki akses
-        return {OWNER_ID}
+    # Owner selalu ditambahkan kembali
+    users.add(int(OWNER_ID))
+
+    return users
 
 
-def save_users():
+def save_users(users):
+    """
+    Menyimpan daftar Telegram ID ke users.json.
+    """
 
     try:
 
-        with open(USERS_FILE, "w", encoding="utf-8") as f:
+        data = sorted(
+            [int(user_id) for user_id in users]
+        )
+
+        with open(
+            USERS_FILE,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
             json.dump(
-                sorted(ALLOWED_USERS),
+                data,
                 f,
                 indent=4
             )
 
+        print(
+            f"users.json berhasil disimpan: {data}"
+        )
+
     except Exception as e:
 
-        print("Gagal menyimpan users.json:", e)
-
-
-# Daftar user yang memiliki akses
-ALLOWED_USERS = load_users()
+        print(
+            "Gagal menyimpan users.json:",
+            e
+        )
 
 
 def is_allowed(user_id):
+    """
+    Cek akses dengan membaca users.json terbaru.
+    """
 
-    return user_id in ALLOWED_USERS
+    try:
+
+        user_id = int(user_id)
+
+    except (ValueError, TypeError):
+
+        return False
+
+    allowed_users = load_users()
+
+    return user_id in allowed_users
 
 
 def is_owner(user_id):
+    """
+    Mengecek apakah Telegram ID adalah owner.
+    """
 
-    return user_id == OWNER_ID
+    try:
+
+        return int(user_id) == int(OWNER_ID)
+
+    except (ValueError, TypeError):
+
+        return False
 
 
 # =========================================================
@@ -104,31 +154,45 @@ def is_owner(user_id):
 
 def access_required(func):
 
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    @wraps(func)
+    async def wrapper(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
 
         user = update.effective_user
 
         if not user:
             return
 
-        # Cek Telegram ID
+        print(
+            f"[ACCESS CHECK] "
+            f"ID={user.id} "
+            f"Username=@{user.username}"
+        )
+
+        # Cek akses terbaru
         if not is_allowed(user.id):
 
             if update.message:
 
                 await update.message.reply_text(
-                    "⛔ AKSES DITOLAK\n\n"
+                    "⛔️ AKSES DITOLAK\n\n"
                     "Anda belum terdaftar sebagai pengguna bot.\n\n"
                     "Silakan hubungi owner untuk mendapatkan akses."
                 )
 
             print(
                 f"[ACCESS DENIED] "
-                f"ID={user.id} "
-                f"Username=@{user.username}"
+                f"ID={user.id}"
             )
 
             return
+
+        print(
+            f"[ACCESS GRANTED] "
+            f"ID={user.id}"
+        )
 
         return await func(update, context)
 
@@ -184,7 +248,9 @@ def get_data():
 # AUTO REFRESH
 # =========================================================
 
-def refresh_data(context: ContextTypes.DEFAULT_TYPE):
+def refresh_data(
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     global cached_df
 
@@ -213,11 +279,38 @@ def refresh_data(context: ContextTypes.DEFAULT_TYPE):
             }
         )
 
-        print("Data berhasil di-refresh")
+        print(
+            "Data berhasil di-refresh"
+        )
 
     except Exception as e:
 
-        print("Gagal refresh:", e)
+        print(
+            "Gagal refresh:",
+            e
+        )
+
+
+# =========================================================
+# MY ID
+# =========================================================
+
+async def myid(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    await update.message.reply_text(
+        f"🆔 TELEGRAM ID ANDA\n\n"
+        f"ID: `{user.id}`\n\n"
+        f"Username: @{user.username if user.username else '-'}",
+        parse_mode="Markdown"
+    )
 
 
 # =========================================================
@@ -225,7 +318,10 @@ def refresh_data(context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 @access_required
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     await update.message.reply_text(
         "Bot ODP Biznet\n\n"
@@ -244,7 +340,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 @access_required
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def info(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if not context.args:
 
@@ -305,7 +404,9 @@ Port15   : {row['Port15']}
 Port16   : {row['Port16']}
 """
 
-    await update.message.reply_text(pesan)
+    await update.message.reply_text(
+        pesan
+    )
 
 
 # =========================================================
@@ -313,7 +414,10 @@ Port16   : {row['Port16']}
 # =========================================================
 
 @access_required
-async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cari(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     if not context.args:
 
@@ -345,7 +449,6 @@ async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-    # Informasi RK
     text = (
         f"📍 LIST ODP RK {rk.upper()}\n\n"
         f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"
@@ -354,7 +457,6 @@ async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Daftar ODP:\n"
     )
 
-    # Daftar ODP
     for _, row in hasil.iterrows():
 
         text += (
@@ -363,15 +465,20 @@ async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{row.get('Lokasi', '-')}\n"
         )
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(
+        text
+    )
 
 
 # =========================================================
-# LIST SEMUA DATA
+# LIST
 # =========================================================
 
 @access_required
-async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def list_all(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     df = get_data()
 
@@ -385,7 +492,9 @@ async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{row['PIU']}\n"
         )
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(
+        text
+    )
 
 
 # =========================================================
@@ -393,7 +502,10 @@ async def list_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 
 @access_required
-async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def menu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     keyboard = [
         [
@@ -412,7 +524,9 @@ async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "Pilih menu:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
 
@@ -431,29 +545,23 @@ async def button_handler(
 
     await query.answer()
 
-    # -----------------------------------------------------
-    # CEK AKSES
-    # -----------------------------------------------------
-
+    # Cek akses
     if not is_allowed(user.id):
 
         await query.edit_message_text(
-            "⛔ AKSES DITOLAK\n\n"
+            "⛔️ AKSES DITOLAK\n\n"
             "Anda belum terdaftar sebagai pengguna bot.\n\n"
             "Silakan hubungi owner untuk mendapatkan akses."
         )
 
+        print(
+            f"[BUTTON ACCESS DENIED] "
+            f"ID={user.id}"
+        )
+
         return
 
-    # -----------------------------------------------------
-    # DATA
-    # -----------------------------------------------------
-
     df = get_data()
-
-    # -----------------------------------------------------
-    # LIST
-    # -----------------------------------------------------
 
     if query.data == "list":
 
@@ -466,11 +574,9 @@ async def button_handler(
             ]
         )
 
-        await query.edit_message_text(text)
-
-    # -----------------------------------------------------
-    # CARI
-    # -----------------------------------------------------
+        await query.edit_message_text(
+            text
+        )
 
     elif query.data == "cari":
 
@@ -480,10 +586,6 @@ async def button_handler(
             "Contoh:\n"
             "/cari KMR"
         )
-
-    # -----------------------------------------------------
-    # INFO
-    # -----------------------------------------------------
 
     elif query.data == "info":
 
@@ -510,7 +612,7 @@ async def adduser(
     if not is_owner(user.id):
 
         await update.message.reply_text(
-            "⛔ AKSES DITOLAK\n\n"
+            "⛔️ AKSES DITOLAK\n\n"
             "Hanya owner yang dapat menambahkan user."
         )
 
@@ -522,14 +624,16 @@ async def adduser(
             "Format:\n\n"
             "/adduser <Telegram ID>\n\n"
             "Contoh:\n"
-            "/adduser 123456789"
+            "/adduser 392836663"
         )
 
         return
 
     try:
 
-        new_user_id = int(context.args[0])
+        new_user_id = int(
+            context.args[0]
+        )
 
     except ValueError:
 
@@ -539,32 +643,54 @@ async def adduser(
 
         return
 
+    # Baca daftar terbaru
+    allowed_users = load_users()
+
     # Cek apakah sudah ada
-    if new_user_id in ALLOWED_USERS:
+    if new_user_id in allowed_users:
 
         await update.message.reply_text(
-            f"ℹ️ User {new_user_id} sudah memiliki akses."
+            f"ℹ️ User `{new_user_id}` "
+            f"sudah memiliki akses.",
+            parse_mode="Markdown"
         )
 
         return
 
     # Tambahkan
-    ALLOWED_USERS.add(new_user_id)
-
-    save_users()
-
-    await update.message.reply_text(
-        f"✅ USER BERHASIL DITAMBAHKAN\n\n"
-        f"Telegram ID: `{new_user_id}`\n\n"
-        f"User sekarang dapat menggunakan bot.",
-        parse_mode="Markdown"
+    allowed_users.add(
+        new_user_id
     )
 
-    print(
-        f"[USER ADDED] "
-        f"{new_user_id} "
-        f"oleh OWNER {user.id}"
+    # Simpan
+    save_users(
+        allowed_users
     )
+
+    # Verifikasi setelah disimpan
+    verify_users = load_users()
+
+    if new_user_id in verify_users:
+
+        await update.message.reply_text(
+            f"✅ USER BERHASIL DITAMBAHKAN\n\n"
+            f"Telegram ID: `{new_user_id}`\n\n"
+            f"User sekarang dapat menggunakan bot.",
+            parse_mode="Markdown"
+        )
+
+        print(
+            f"[USER ADDED] "
+            f"ID={new_user_id} "
+            f"oleh OWNER={user.id}"
+        )
+
+    else:
+
+        await update.message.reply_text(
+            "❌ User gagal disimpan.\n\n"
+            "Periksa log Railway."
+        )
 
 
 # =========================================================
@@ -578,11 +704,10 @@ async def deluser(
 
     user = update.effective_user
 
-    # Hanya OWNER
     if not is_owner(user.id):
 
         await update.message.reply_text(
-            "⛔ AKSES DITOLAK\n\n"
+            "⛔️ AKSES DITOLAK\n\n"
             "Hanya owner yang dapat menghapus user."
         )
 
@@ -594,14 +719,16 @@ async def deluser(
             "Format:\n\n"
             "/deluser <Telegram ID>\n\n"
             "Contoh:\n"
-            "/deluser 123456789"
+            "/deluser 392836663"
         )
 
         return
 
     try:
 
-        delete_user_id = int(context.args[0])
+        delete_user_id = int(
+            context.args[0]
+        )
 
     except ValueError:
 
@@ -620,19 +747,25 @@ async def deluser(
 
         return
 
-    # Cek user
-    if delete_user_id not in ALLOWED_USERS:
+    allowed_users = load_users()
+
+    if delete_user_id not in allowed_users:
 
         await update.message.reply_text(
-            f"ℹ️ User {delete_user_id} tidak ditemukan."
+            f"ℹ️ User `{delete_user_id}` "
+            f"tidak ditemukan.",
+            parse_mode="Markdown"
         )
 
         return
 
-    # Hapus user
-    ALLOWED_USERS.remove(delete_user_id)
+    allowed_users.remove(
+        delete_user_id
+    )
 
-    save_users()
+    save_users(
+        allowed_users
+    )
 
     await update.message.reply_text(
         f"✅ AKSES USER DICABUT\n\n"
@@ -642,13 +775,13 @@ async def deluser(
 
     print(
         f"[USER REMOVED] "
-        f"{delete_user_id} "
-        f"oleh OWNER {user.id}"
+        f"ID={delete_user_id} "
+        f"oleh OWNER={user.id}"
     )
 
 
 # =========================================================
-# LIST USER
+# USERS
 # =========================================================
 
 async def users(
@@ -658,37 +791,47 @@ async def users(
 
     user = update.effective_user
 
-    # Hanya OWNER
     if not is_owner(user.id):
 
         await update.message.reply_text(
-            "⛔ AKSES DITOLAK\n\n"
+            "⛔️ AKSES DITOLAK\n\n"
             "Hanya owner yang dapat melihat daftar user."
         )
 
         return
 
-    text = "👥 USER YANG MEMILIKI AKSES\n\n"
+    # Selalu baca data terbaru
+    allowed_users = load_users()
 
-    for user_id in sorted(ALLOWED_USERS):
+    text = (
+        "👥 USER YANG MEMILIKI AKSES\n\n"
+    )
+
+    for user_id in sorted(
+        allowed_users
+    ):
 
         if user_id == OWNER_ID:
 
             text += (
-                f"👑 {user_id} — OWNER\n"
+                f"👑 `{user_id}` — OWNER\n"
             )
 
         else:
 
             text += (
-                f"👤 {user_id}\n"
+                f"👤 `{user_id}`\n"
             )
 
     text += (
-        f"\nTotal user: {len(ALLOWED_USERS)}"
+        f"\nTotal user: "
+        f"{len(allowed_users)}"
     )
 
-    await update.message.reply_text(text)
+    await update.message.reply_text(
+        text,
+        parse_mode="Markdown"
+    )
 
 
 # =========================================================
@@ -697,10 +840,40 @@ async def users(
 
 def main():
 
-    app = Application.builder().token(TOKEN).build()
+    # Cek OWNER_ID
+    print(
+        "================================="
+    )
+
+    print(
+        "BOT ODP BIZNET"
+    )
+
+    print(
+        f"OWNER_ID: {OWNER_ID}"
+    )
+
+    print(
+        f"USERS_FILE: {USERS_FILE}"
+    )
+
+    print(
+        f"ALLOWED_USERS: {load_users()}"
+    )
+
+    print(
+        "================================="
+    )
+
+    app = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .build()
+    )
 
     # -----------------------------------------------------
-    # COMMAND UTAMA
+    # COMMAND USER
     # -----------------------------------------------------
 
     app.add_handler(
@@ -739,6 +912,18 @@ def main():
     )
 
     # -----------------------------------------------------
+    # CEK TELEGRAM ID
+    # Bisa digunakan siapa saja
+    # -----------------------------------------------------
+
+    app.add_handler(
+        CommandHandler(
+            "myid",
+            myid
+        )
+    )
+
+    # -----------------------------------------------------
     # COMMAND OWNER
     # -----------------------------------------------------
 
@@ -764,7 +949,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # BUTTON HANDLER
+    # BUTTON
     # -----------------------------------------------------
 
     app.add_handler(
@@ -785,13 +970,13 @@ def main():
         first=5
     )
 
-    # -----------------------------------------------------
-    # START
-    # -----------------------------------------------------
+    print(
+        "Bot berjalan 🚀"
+    )
 
-    print("Bot berjalan 🚀")
-    print(f"OWNER_ID: {OWNER_ID}")
-    print(f"ALLOWED_USERS: {ALLOWED_USERS}")
+    # -----------------------------------------------------
+    # RUN
+    # -----------------------------------------------------
 
     app.run_polling(
         drop_pending_updates=True
@@ -799,7 +984,7 @@ def main():
 
 
 # =========================================================
-# RUN
+# RUN PROGRAM
 # =========================================================
 
 if __name__ == "__main__":
