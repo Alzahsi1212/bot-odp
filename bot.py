@@ -1558,7 +1558,7 @@ async def button_handler(
             "Gunakan:\n"
             "/cari <RK>\n\n"
             "Contoh:\n"
-            "/cari KMR"
+            "/cari GPK0"
         )
 
         return
@@ -1574,7 +1574,7 @@ async def button_handler(
             "Gunakan:\n"
             "/info <Nama ODP>\n\n"
             "Contoh:\n"
-            "/info KMR010101"
+            "/info GPK010101"
         )
 
         return
@@ -1589,10 +1589,10 @@ async def button_handler(
         await query.edit_message_text(
             "🔎 HISTORY CUSTOMER\n\n"
             "Gunakan:\n"
-            "/hist <kata pencarian>\n\n"
+            "/hist <Nama/SN/Cust ID/BRIM ID>\n\n"
             "Contoh:\n"
             "/hist budi\n"
-            "/hist CUST123456"
+            "/hist 48575443XXXXXX"
         )
 
         return
