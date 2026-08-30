@@ -10,7 +10,7 @@ from telegram.ext import (
     ContextTypes
 )
 
-from config import TOKEN
+from config import TOKEN, OWNER_ID
 
 
 # =========================================================
@@ -18,10 +18,6 @@ from config import TOKEN
 # =========================================================
 
 URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/pub?output=csv"
-
-# Telegram User ID OWNER
-# Ambil dari Railway Variables
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 # File untuk menyimpan daftar user
 USERS_FILE = "users.json"
