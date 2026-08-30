@@ -36,7 +36,9 @@ CUSTOMER_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSJ534j22x_3ltjW
 # LOKASI USERS.JSON
 # =========================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 USERS_FILE = os.path.join(
     BASE_DIR,
@@ -66,7 +68,9 @@ def load_users():
     users = set()
 
     # Owner selalu boleh akses
-    users.add(int(OWNER_ID))
+    users.add(
+        int(OWNER_ID)
+    )
 
     if not os.path.exists(USERS_FILE):
 
@@ -261,7 +265,9 @@ def access_required(func):
 
 def normalize(text):
 
-    return str(text).strip().upper()
+    return str(
+        text
+    ).strip().upper()
 
 
 # =========================================================
@@ -328,6 +334,7 @@ def refresh_data(
 
     global cached_df
     global cached_customer_df
+
 
     # =====================================================
     # REFRESH DATA ODP
@@ -434,7 +441,6 @@ async def start(
         "/info <ODP>\n"
         "/cari <RK>\n"
         "/hist <Nama/SN/BRIM ID/CUST ID>\n"
-        "/list"
     )
 
 
@@ -465,7 +471,8 @@ async def info(
         df["Nama ODP"]
         .astype(str)
         .apply(normalize)
-        == normalize(nama_odp)
+        ==
+        normalize(nama_odp)
     )
 
     hasil = df[mask]
@@ -539,7 +546,8 @@ async def cari(
         df["RK"]
         .astype(str)
         .apply(normalize)
-        == normalize(rk)
+        ==
+        normalize(rk)
     )
 
     hasil = df[mask]
@@ -590,22 +598,22 @@ async def hist(
             "Format:\n"
             "/hist <kata pencarian>\n\n"
             "Pencarian berdasarkan:\n"
-            "• Nama\n"
-            "• SN\n"
-            "• BRIM ID\n"
-            "• CUST ID\n\n"
+            "• Nama → sebagian nama\n"
+            "• SN → harus sama persis\n"
+            "• BRIM ID → harus sama persis\n"
+            "• CUST ID → harus sama persis\n\n"
             "Contoh:\n"
             "/hist budi\n"
-            "/hist ZTE123\n"
-            "/hist BRM123\n"
-            "/hist CUST456"
+            "/hist ZTE123456\n"
+            "/hist BRM123456\n"
+            "/hist CUST123456"
         )
 
         return
 
 
     # =====================================================
-    # GABUNGKAN ARGUMENT
+    # KEYWORD
     # =====================================================
 
     keyword = " ".join(
@@ -645,10 +653,10 @@ async def hist(
 
 
     # =====================================================
-    # KOLOM YANG DIGUNAKAN UNTUK PENCARIAN
+    # CEK KOLOM
     # =====================================================
 
-    kolom_cari = [
+    kolom_wajib = [
         "Nama",
         "SN",
         "BRIM ID",
@@ -656,24 +664,21 @@ async def hist(
     ]
 
 
-    # Cek kolom yang tersedia
-
-    kolom_tersedia = [
+    kolom_tidak_ada = [
         kolom
-        for kolom in kolom_cari
-        if kolom in df.columns
+        for kolom in kolom_wajib
+        if kolom not in df.columns
     ]
 
 
-    if not kolom_tersedia:
+    if kolom_tidak_ada:
 
         await update.message.reply_text(
-            "❌ Kolom pencarian tidak ditemukan.\n\n"
-            "Pastikan Sheet 2 memiliki kolom:\n"
-            "Nama\n"
-            "SN\n"
-            "BRIM ID\n"
-            "CUST ID"
+            "❌ Kolom berikut tidak ditemukan di Sheet 2:\n\n"
+            +
+            "\n".join(
+                kolom_tidak_ada
+            )
         )
 
         return
@@ -689,29 +694,76 @@ async def hist(
 
 
     # =====================================================
-    # PARTIAL SEARCH
+    # NAMA = PARTIAL
     # =====================================================
 
-    mask = pd.Series(
-        False,
-        index=df.index
+    mask_nama = (
+        df["Nama"]
+        .astype(str)
+        .str.upper()
+        .str.contains(
+            keyword_normalized,
+            regex=False,
+            na=False
+        )
     )
 
 
-    for kolom in kolom_tersedia:
+    # =====================================================
+    # SN = EXACT
+    # =====================================================
 
-        mask = (
-            mask
-            |
-            df[kolom]
-            .astype(str)
-            .str.upper()
-            .str.contains(
-                keyword_normalized,
-                regex=False,
-                na=False
-            )
-        )
+    mask_sn = (
+        df["SN"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        ==
+        keyword_normalized
+    )
+
+
+    # =====================================================
+    # BRIM ID = EXACT
+    # =====================================================
+
+    mask_brim = (
+        df["BRIM ID"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        ==
+        keyword_normalized
+    )
+
+
+    # =====================================================
+    # CUST ID = EXACT
+    # =====================================================
+
+    mask_cust = (
+        df["CUST ID"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        ==
+        keyword_normalized
+    )
+
+
+    # =====================================================
+    # GABUNGKAN HASIL
+    # =====================================================
+
+    mask = (
+        mask_nama
+        |
+        mask_sn
+        |
+        mask_brim
+        |
+        mask_cust
+    )
 
 
     hasil = df[mask]
@@ -732,83 +784,437 @@ async def hist(
 
 
     # =====================================================
-    # BATAS HASIL
+    # SIMPAN KEYWORD UNTUK TOMBOL KEMBALI
     # =====================================================
 
-    MAX_RESULT = 10
+    context.user_data[
+        "hist_keyword"
+    ] = keyword
 
-    total = len(hasil)
 
-    hasil_tampil = hasil.head(
-        MAX_RESULT
-    )
+    # =====================================================
+    # BUAT BUTTON
+    # =====================================================
+
+    keyboard = []
+
+
+    for index, row in hasil.iterrows():
+
+        nama = str(
+            row.get(
+                "Nama",
+                "-"
+            )
+        ).strip()
+
+
+        cust_id = str(
+            row.get(
+                "CUST ID",
+                "-"
+            )
+        ).strip()
+
+
+        # ---------------------------------------------
+        # TEKS BUTTON
+        # ---------------------------------------------
+
+        button_text = (
+            f"👤 {nama} | {cust_id}"
+        )
+
+
+        # ---------------------------------------------
+        # CALLBACK DATA
+        # ---------------------------------------------
+
+        callback_data = (
+            f"hist_detail:{index}"
+        )
+
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    button_text,
+                    callback_data=callback_data
+                )
+            ]
+        )
 
 
     # =====================================================
     # HEADER
     # =====================================================
 
-    pesan = (
+    text = (
         "🔎 HASIL PENCARIAN CUSTOMER\n\n"
         f"Keyword : {keyword}\n"
-        f"Ditemukan : {total} data\n"
+        f"Ditemukan : {len(hasil)} data\n\n"
+        "Silakan pilih customer:"
     )
 
 
-    if total > MAX_RESULT:
-
-        pesan += (
-            f"Menampilkan : {MAX_RESULT} data pertama\n"
-        )
-
-
-    pesan += "\n"
-
-
     # =====================================================
-    # TAMPILKAN DATA
+    # KIRIM BUTTON
     # =====================================================
-
-    for i, (_, row) in enumerate(
-        hasil_tampil.iterrows(),
-        start=1
-    ):
-
-        pesan += (
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"👤 CUSTOMER {i}\n\n"
-            f"Tim        : {row.get('Tim', '-')}\n"
-            f"Tanggal    : {row.get('Tanggal', '-')}\n"
-            f"Nama       : {row.get('Nama', '-')}\n"
-            f"BRIM ID    : {row.get('BRIM ID', '-')}\n"
-            f"CUST ID    : {row.get('CUST ID', '-')}\n"
-            f"SN         : {row.get('SN', '-')}\n"
-            f"Layanan    : {row.get('Layanan', '-')}\n"
-            f"Alamat     : {row.get('Alamat', '-')}\n"
-            f"ODP        : {row.get('ODP', '-')}\n"
-            f"Port DP    : {row.get('Port DP', '-')}\n"
-            f"Kabel      : {row.get('Kabel', '-')}\n"
-            f"Tikor      : {row.get('Tikor', '-')}\n"
-            f"Foto Rumah : {row.get('Foto Rumah', '-')}\n\n"
-        )
-
-
-    # =====================================================
-    # KETERANGAN HASIL
-    # =====================================================
-
-    if total > MAX_RESULT:
-
-        pesan += (
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ Masih ada {total - MAX_RESULT} "
-            "hasil lainnya.\n"
-            "Persempit kata pencarian untuk hasil lebih spesifik."
-        )
-
 
     await update.message.reply_text(
-        pesan
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# =========================================================
+# HIST DETAIL
+# =========================================================
+
+async def hist_detail_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    user = query.from_user
+
+    await query.answer()
+
+
+    # =====================================================
+    # CEK AKSES
+    # =====================================================
+
+    if not is_allowed(user.id):
+
+        await query.edit_message_text(
+            "⛔️ AKSES DITOLAK\n\n"
+            "Anda tidak memiliki akses."
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL INDEX
+    # =====================================================
+
+    try:
+
+        index = int(
+            query.data.split(":")[1]
+        )
+
+    except Exception:
+
+        await query.edit_message_text(
+            "❌ Data customer tidak valid."
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL DATA CUSTOMER
+    # =====================================================
+
+    try:
+
+        df = get_customer_data()
+
+    except Exception as e:
+
+        print(
+            "Gagal mengambil data customer:",
+            e
+        )
+
+        await query.edit_message_text(
+            "❌ Gagal membaca data customer."
+        )
+
+        return
+
+
+    # =====================================================
+    # CEK INDEX
+    # =====================================================
+
+    if index not in df.index:
+
+        await query.edit_message_text(
+            "❌ Data customer sudah tidak tersedia."
+        )
+
+        return
+
+
+    row = df.loc[index]
+
+
+    # =====================================================
+    # DETAIL CUSTOMER
+    # =====================================================
+
+    pesan = (
+        "👤 DETAIL CUSTOMER\n\n"
+        f"Tim        : {row.get('Tim', '-')}\n"
+        f"Tanggal    : {row.get('Tanggal', '-')}\n"
+        f"Nama       : {row.get('Nama', '-')}\n"
+        f"BRIM ID    : {row.get('BRIM ID', '-')}\n"
+        f"CUST ID    : {row.get('CUST ID', '-')}\n"
+        f"SN         : {row.get('SN', '-')}\n"
+        f"Layanan    : {row.get('Layanan', '-')}\n"
+        f"Alamat     : {row.get('Alamat', '-')}\n"
+        f"ODP        : {row.get('ODP', '-')}\n"
+        f"Port DP    : {row.get('Port DP', '-')}\n"
+        f"Kabel      : {row.get('Kabel', '-')}\n"
+        f"Tikor      : {row.get('Tikor', '-')}\n"
+        f"Foto Rumah : {row.get('Foto Rumah', '-')}"
+    )
+
+
+    # =====================================================
+    # TOMBOL KEMBALI
+    # =====================================================
+
+    keyboard = [
+
+        [
+            InlineKeyboardButton(
+                "🔙 Kembali ke hasil",
+                callback_data="hist_back"
+            )
+        ]
+
+    ]
+
+
+    await query.edit_message_text(
+        pesan,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
+
+# =========================================================
+# HIST BACK
+# =========================================================
+
+async def hist_back_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    query = update.callback_query
+
+    user = query.from_user
+
+    await query.answer()
+
+
+    # =====================================================
+    # CEK AKSES
+    # =====================================================
+
+    if not is_allowed(user.id):
+
+        await query.edit_message_text(
+            "⛔️ AKSES DITOLAK\n\n"
+            "Anda tidak memiliki akses."
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL KEYWORD SEBELUMNYA
+    # =====================================================
+
+    keyword = context.user_data.get(
+        "hist_keyword"
+    )
+
+
+    if not keyword:
+
+        await query.edit_message_text(
+            "❌ Pencarian sebelumnya sudah tidak tersedia."
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL DATA
+    # =====================================================
+
+    try:
+
+        df = get_customer_data()
+
+    except Exception as e:
+
+        print(
+            "Gagal mengambil data customer:",
+            e
+        )
+
+        await query.edit_message_text(
+            "❌ Gagal membaca data customer."
+        )
+
+        return
+
+
+    # =====================================================
+    # NORMALIZE
+    # =====================================================
+
+    keyword_normalized = normalize(
+        keyword
+    )
+
+
+    # =====================================================
+    # NAMA = PARTIAL
+    # =====================================================
+
+    mask_nama = (
+        df["Nama"]
+        .astype(str)
+        .str.upper()
+        .str.contains(
+            keyword_normalized,
+            regex=False,
+            na=False
+        )
+    )
+
+
+    # =====================================================
+    # SN = EXACT
+    # =====================================================
+
+    mask_sn = (
+        df["SN"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        ==
+        keyword_normalized
+    )
+
+
+    # =====================================================
+    # BRIM ID = EXACT
+    # =====================================================
+
+    mask_brim = (
+        df["BRIM ID"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        ==
+        keyword_normalized
+    )
+
+
+    # =====================================================
+    # CUST ID = EXACT
+    # =====================================================
+
+    mask_cust = (
+        df["CUST ID"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        ==
+        keyword_normalized
+    )
+
+
+    # =====================================================
+    # HASIL
+    # =====================================================
+
+    hasil = df[
+        mask_nama
+        |
+        mask_sn
+        |
+        mask_brim
+        |
+        mask_cust
+    ]
+
+
+    if hasil.empty:
+
+        await query.edit_message_text(
+            "❌ Data customer sudah tidak ditemukan."
+        )
+
+        return
+
+
+    # =====================================================
+    # BUAT BUTTON
+    # =====================================================
+
+    keyboard = []
+
+
+    for index, row in hasil.iterrows():
+
+        nama = str(
+            row.get(
+                "Nama",
+                "-"
+            )
+        ).strip()
+
+
+        cust_id = str(
+            row.get(
+                "CUST ID",
+                "-"
+            )
+        ).strip()
+
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"👤 {nama} | {cust_id}",
+                    callback_data=f"hist_detail:{index}"
+                )
+            ]
+        )
+
+
+    # =====================================================
+    # HEADER
+    # =====================================================
+
+    text = (
+        "🔎 HASIL PENCARIAN CUSTOMER\n\n"
+        f"Keyword : {keyword}\n"
+        f"Ditemukan : {len(hasil)} data\n\n"
+        "Silakan pilih customer:"
+    )
+
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        )
     )
 
 
@@ -863,9 +1269,17 @@ async def menu(
                 "ℹ️ Info ODP",
                 callback_data="info"
             )
+        ],
+        [
+            InlineKeyboardButton(
+                " History Customer",
+                callback_data="hist"
+            )
         ]
+        
 
     ]
+
 
     await update.message.reply_text(
         "Pilih menu:",
@@ -1308,7 +1722,7 @@ def main():
 
 
     # =====================================================
-    # COMMAND BARU - HIST CUSTOMER
+    # COMMAND HIST CUSTOMER
     # =====================================================
 
     app.add_handler(
@@ -1377,7 +1791,32 @@ def main():
 
 
     # =====================================================
-    # BUTTON
+    # BUTTON HIST DETAIL
+    # HARUS SEBELUM BUTTON HANDLER UMUM
+    # =====================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            hist_detail_handler,
+            pattern=r"^hist_detail:"
+        )
+    )
+
+
+    # =====================================================
+    # BUTTON HIST BACK
+    # =====================================================
+
+    app.add_handler(
+        CallbackQueryHandler(
+            hist_back_handler,
+            pattern=r"^hist_back$"
+        )
+    )
+
+
+    # =====================================================
+    # BUTTON UMUM
     # =====================================================
 
     app.add_handler(
