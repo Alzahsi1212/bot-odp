@@ -65,7 +65,7 @@ CUSTOMER_URL = (
 #
 
 PHOTO_API_URL = (
-    "PASTE_URL_WEB_APP_APPS_SCRIPT_ANDA_DI_SINI"
+    "https://script.google.com/macros/s/AKfycbwkZ9B4Uhhgcg6zBvdJdGJ7DHtjTt196ExSwue4XVJr0QtjblkMDj84o45c3nIPaTME/exec"
 )
 
 
@@ -81,7 +81,7 @@ PHOTO_API_URL = (
 #
 
 API_KEY = (
-    "ODP_BOT_2026_RAHASIA"
+    "8962683694:AAHdUNfswp0hRAYyoBnfcsS3d8NKvdd9yzs"
 )
 
 
