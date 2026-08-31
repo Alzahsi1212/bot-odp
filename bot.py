@@ -687,43 +687,37 @@ def build_hist_result(
 # BUILD HIST KEYBOARD
 # =========================================================
 
-def build_hist_keyboard(
-    hasil
-):
+def build_hist_keyboard(hasil):
 
     keyboard = []
 
     for index, row in hasil.iterrows():
 
         nama = str(
-            row.get(
-                "Nama",
-                "-"
-            )
+            row.get("Nama", "-")
         ).strip()
 
         cust_id = str(
-            row.get(
-                "CUST ID",
-                "-"
-            )
+            row.get("CUST ID", "-")
         ).strip()
 
-        callback_data = (
-            f"hist_detail:{index}"
-        )
+        # Jika kosong
+        if not nama:
+            nama = "Nama tidak tersedia"
 
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    f"👤 {nama} | {cust_id}",
-                    callback_data=callback_data
-                )
-            ]
-        )
+        if not cust_id:
+            cust_id = "CUST ID kosong"
+
+        callback_data = f"hist_detail:{index}"
+
+        keyboard.append([
+            InlineKeyboardButton(
+                f"👤 {nama} | {cust_id}",
+                callback_data=callback_data
+            )
+        ])
 
     return keyboard
-
 
 # =========================================================
 # HIST CUSTOMER
@@ -1354,7 +1348,7 @@ async def menu(
 
         [
             InlineKeyboardButton(
-                "📋 History Customer",
+                "📋 History Cust",
                 callback_data="hist"
             )
         ]
