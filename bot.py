@@ -201,7 +201,10 @@ def save_users(users):
         print(
             "Gagal menyimpan users.json:",
             e
-        )# =========================================================
+        )
+
+
+# =========================================================
 # IS ALLOWED
 # =========================================================
 
@@ -397,7 +400,8 @@ def refresh_data(
                 "Port7": str,
                 "Port8": str,
                 "Port9": str,
-                "Port10": str,"Port11": str,
+                "Port10": str,
+                "Port11": str,
                 "Port12": str,
                 "Port13": str,
                 "Port14": str,
@@ -603,7 +607,8 @@ async def cari(
 
     text = (
         f"📍 LIST ODP RK {rk.upper()}\n\n"
-        f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"f"Backbone : {hasil.iloc[0].get('Backbone', '-')}\n"
+        f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"
+        f"Backbone : {hasil.iloc[0].get('Backbone', '-')}\n"
         f"Tikor    : {hasil.iloc[0].get('Tikor', '-')}\n\n"
         f"Daftar ODP:\n"
     )
@@ -687,37 +692,79 @@ def build_hist_result(
 # BUILD HIST KEYBOARD
 # =========================================================
 
-def build_hist_keyboard(hasil):
+def build_hist_keyboard(
+    hasil
+):
 
     keyboard = []
 
     for index, row in hasil.iterrows():
 
         nama = str(
-            row.get("Nama", "-")
+            row.get(
+                "Nama",
+                "-"
+            )
         ).strip()
 
         cust_id = str(
-            row.get("CUST ID", "-")
+            row.get(
+                "CUST ID",
+                "-"
+            )
         ).strip()
 
-        # Jika kosong
+        # Jika nama kosong
         if not nama:
             nama = "Nama tidak tersedia"
 
+        # Jika CUST ID kosong
         if not cust_id:
             cust_id = "CUST ID kosong"
 
-        callback_data = f"hist_detail:{index}"
+        callback_data = (
+            f"hist_detail:{index}"
+        )
 
-        keyboard.append([
-            InlineKeyboardButton(
-                f"👤 {nama} | {cust_id}",
-                callback_data=callback_data
-            )
-        ])
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"👤 {nama} | {cust_id}",
+                    callback_data=callback_data
+                )
+            ]
+        )
 
     return keyboard
+
+
+# =========================================================
+# BUILD HIST LIST
+# =========================================================
+
+def build_hist_list_message(
+    hasil,
+    keyword
+):
+
+    keyboard = build_hist_keyboard(
+        hasil
+    )
+
+    text = (
+        "🔎 HASIL PENCARIAN CUSTOMER\n\n"
+        f"Keyword : {keyword}\n"
+        f"Ditemukan : {len(hasil)} data\n\n"
+        "Silakan pilih customer:"
+    )
+
+    return (
+        text,
+        InlineKeyboardMarkup(
+            keyboard
+        )
+    )
+
 
 # =========================================================
 # HIST CUSTOMER
@@ -811,11 +858,14 @@ async def hist(
     if hasil.empty:
 
         await update.message.reply_text(
-            f"❌ DATA CUSTOMER TIDAK DITEMUKAN\n\n"f"Pencarian: {keyword}"
+            f"❌ DATA CUSTOMER TIDAK DITEMUKAN\n\n"
+            f"Pencarian: {keyword}"
         )
 
         return
 
+    # Simpan pencarian agar tombol Kembali
+    # bisa menampilkan hasil yang sama
     context.user_data[
         "hist_keyword"
     ] = keyword
@@ -827,22 +877,14 @@ async def hist(
         for index in hasil.index
     ]
 
-    keyboard = build_hist_keyboard(
-        hasil
-    )
-
-    text = (
-        "🔎 HASIL PENCARIAN CUSTOMER\n\n"
-        f"Keyword : {keyword}\n"
-        f"Ditemukan : {len(hasil)} data\n\n"
-        "Silakan pilih customer:"
+    text, reply_markup = build_hist_list_message(
+        hasil,
+        keyword
     )
 
     await update.message.reply_text(
         text,
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        )
+        reply_markup=reply_markup
     )
 
 
@@ -984,6 +1026,24 @@ def build_customer_detail(
 
 
 # =========================================================
+# BUILD BACK BUTTON
+# =========================================================
+
+def build_hist_back_keyboard():
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "⬅️ Kembali ke List Customer",
+                    callback_data="hist_back"
+                )
+            ]
+        ]
+    )
+
+
+# =========================================================
 # HIST DETAIL
 # =========================================================
 
@@ -1009,7 +1069,8 @@ async def hist_detail_handler(
 
         await query.edit_message_text(
             "⛔️ AKSES DITOLAK\n\n"
-            "Anda tidak memiliki akses.")
+            "Anda tidak memiliki akses."
+        )
 
         return
 
@@ -1101,6 +1162,10 @@ async def hist_detail_handler(
         )
 
 
+    # =====================================================
+    # JIKA CUST ID KOSONG
+    # =====================================================
+
     if not cust_id:
 
         await context.bot.send_message(
@@ -1108,7 +1173,8 @@ async def hist_detail_handler(
             text=(
                 f"{caption_detail}\n"
                 "⚠️ CUST ID kosong, foto tidak dapat dicari."
-            )
+            ),
+            reply_markup=build_hist_back_keyboard()
         )
 
         return
@@ -1124,12 +1190,19 @@ async def hist_detail_handler(
     )
 
 
+    # =====================================================
+    # AMBIL FOTO
+    # =====================================================
+
     photo_result = get_customer_photo(
         cust_id
     )
 
 
-    # Hapus pesan status pencarian
+    # =====================================================
+    # HAPUS PESAN STATUS PENCARIAN
+    # =====================================================
+
     try:
 
         await loading_msg.delete()
@@ -1139,6 +1212,10 @@ async def hist_detail_handler(
         pass
 
 
+    # =====================================================
+    # FOTO TIDAK TERSEDIA
+    # =====================================================
+
     if not photo_result:
 
         await context.bot.send_message(
@@ -1146,7 +1223,8 @@ async def hist_detail_handler(
             text=(
                 f"{caption_detail}\n"
                 "📷 Foto Rumah tidak tersedia."
-            )
+            ),
+            reply_markup=build_hist_back_keyboard()
         )
 
         return
@@ -1174,7 +1252,8 @@ async def hist_detail_handler(
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
             photo=photo_file,
-            caption=caption_detail
+            caption=caption_detail,
+            reply_markup=build_hist_back_keyboard()
         )
 
         print(
@@ -1194,7 +1273,8 @@ async def hist_detail_handler(
             text=(
                 f"{caption_detail}\n"
                 "❌ Foto ditemukan, tetapi gagal dikirim ke Telegram."
-            )
+            ),
+            reply_markup=build_hist_back_keyboard()
         )
 
 
@@ -1213,15 +1293,32 @@ async def hist_back_handler(
 
     await query.answer()
 
+
+    # =====================================================
+    # CEK AKSES
+    # =====================================================
+
     if not is_allowed(
         user.id
     ):
 
-        await query.edit_message_text(
-            "⛔️ AKSES DITOLAK\n\n"
-            "Anda tidak memiliki akses.")
+        try:
+
+            await query.edit_message_text(
+                "⛔️ AKSES DITOLAK\n\n"
+                "Anda tidak memiliki akses."
+            )
+
+        except Exception:
+
+            pass
 
         return
+
+
+    # =====================================================
+    # AMBIL KEYWORD PENCARIAN SEBELUMNYA
+    # =====================================================
 
     keyword = context.user_data.get(
         "hist_keyword"
@@ -1229,11 +1326,22 @@ async def hist_back_handler(
 
     if not keyword:
 
-        await query.edit_message_text(
-            "❌ Pencarian sebelumnya sudah tidak tersedia."
-        )
+        try:
+
+            await query.edit_message_text(
+                "❌ Pencarian sebelumnya sudah tidak tersedia."
+            )
+
+        except Exception:
+
+            pass
 
         return
+
+
+    # =====================================================
+    # AMBIL DATA CUSTOMER TERBARU
+    # =====================================================
 
     try:
 
@@ -1246,11 +1354,22 @@ async def hist_back_handler(
             e
         )
 
-        await query.edit_message_text(
-            "❌ Gagal membaca data customer."
-        )
+        try:
+
+            await query.edit_message_text(
+                "❌ Gagal membaca data customer."
+            )
+
+        except Exception:
+
+            pass
 
         return
+
+
+    # =====================================================
+    # CARI ULANG BERDASARKAN KEYWORD
+    # =====================================================
 
     hasil = build_hist_result(
         df,
@@ -1259,11 +1378,22 @@ async def hist_back_handler(
 
     if hasil.empty:
 
-        await query.edit_message_text(
-            "❌ Data customer sudah tidak ditemukan."
-        )
+        try:
+
+            await query.edit_message_text(
+                "❌ Data customer sudah tidak ditemukan."
+            )
+
+        except Exception:
+
+            pass
 
         return
+
+
+    # =====================================================
+    # UPDATE INDEX HASIL PENCARIAN
+    # =====================================================
 
     context.user_data[
         "hist_indexes"
@@ -1272,23 +1402,88 @@ async def hist_back_handler(
         for index in hasil.index
     ]
 
-    keyboard = build_hist_keyboard(
-        hasil
+
+    # =====================================================
+    # BUAT ULANG LIST CUSTOMER
+    # =====================================================
+
+    text, reply_markup = build_hist_list_message(
+        hasil,
+        keyword
     )
 
-    text = (
-        "🔎 HASIL PENCARIAN CUSTOMER\n\n"
-        f"Keyword : {keyword}\n"
-        f"Ditemukan : {len(hasil)} data\n\n"
-        "Silakan pilih customer:"
-    )
 
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
+    # =====================================================
+    # PESAN DARI DETAIL BISA BERUPA FOTO
+    # =====================================================
+    #
+    # Karena pesan detail bisa berupa photo message,
+    # edit_message_text tidak selalu bisa digunakan.
+    #
+    # Kita coba edit caption terlebih dahulu.
+    # Jika gagal, kirim pesan list baru.
+    # =====================================================
+
+    try:
+
+        if query.message and query.message.photo:
+
+            await query.edit_message_caption(
+                caption=text,
+                reply_markup=reply_markup
+            )
+
+        else:
+
+            await query.edit_message_text(
+                text,
+                reply_markup=reply_markup
+            )
+
+        return
+
+    except Exception as e:
+
+        print(
+            "Gagal mengubah pesan detail menjadi list:",
+            e
         )
-    )
+
+
+    # =====================================================
+    # FALLBACK
+    # =====================================================
+    #
+    # Jika pesan foto tidak bisa diubah menjadi list,
+    # hapus pesan detail lalu kirim list baru.
+    # =====================================================
+
+    try:
+
+        await query.delete_message()
+
+    except Exception as e:
+
+        print(
+            "Gagal menghapus pesan detail:",
+            e
+        )
+
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=text,
+            reply_markup=reply_markup
+        )
+
+    except Exception as e:
+
+        print(
+            "Gagal mengirim kembali list customer:",
+            e
+        )
 
 
 # =========================================================
@@ -1378,6 +1573,11 @@ async def button_handler(
 
     await query.answer()
 
+
+    # =====================================================
+    # CEK AKSES
+    # =====================================================
+
     if not is_allowed(
         user.id
     ):
@@ -1395,6 +1595,11 @@ async def button_handler(
 
         return
 
+
+    # =====================================================
+    # BUTTON CARI
+    # =====================================================
+
     if query.data == "cari":
 
         await query.edit_message_text(
@@ -1406,6 +1611,11 @@ async def button_handler(
 
         return
 
+
+    # =====================================================
+    # BUTTON INFO
+    # =====================================================
+
     if query.data == "info":
 
         await query.edit_message_text(
@@ -1416,6 +1626,11 @@ async def button_handler(
         )
 
         return
+
+
+    # =====================================================
+    # BUTTON HIST
+    # =====================================================
 
     if query.data == "hist":
 
@@ -1436,7 +1651,8 @@ async def button_handler(
 # =========================================================
 
 async def adduser(
-    update: Update,context: ContextTypes.DEFAULT_TYPE
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
 ):
 
     user = update.effective_user
@@ -1654,7 +1870,8 @@ async def users(
 
         else:
 
-            text += (f"👤 `{user_id}`\n"
+            text += (
+                f"👤 `{user_id}`\n"
             )
 
     text += (
@@ -1704,6 +1921,11 @@ def main():
         .token(TOKEN)
         .build()
     )
+
+
+    # =====================================================
+    # COMMAND HANDLERS
+    # =====================================================
 
     app.add_handler(
         CommandHandler(
@@ -1775,6 +1997,11 @@ def main():
         )
     )
 
+
+    # =====================================================
+    # HISTORY CUSTOMER CALLBACK
+    # =====================================================
+
     app.add_handler(
         CallbackQueryHandler(
             hist_detail_handler,
@@ -1789,11 +2016,21 @@ def main():
         )
     )
 
+
+    # =====================================================
+    # GENERAL BUTTON CALLBACK
+    # =====================================================
+
     app.add_handler(
         CallbackQueryHandler(
             button_handler
         )
     )
+
+
+    # =====================================================
+    # AUTO REFRESH
+    # =====================================================
 
     job_queue = app.job_queue
 
@@ -1802,6 +2039,11 @@ def main():
         interval=60,
         first=5
     )
+
+
+    # =====================================================
+    # RUN BOT
+    # =====================================================
 
     print(
         "Bot berjalan 🚀"
@@ -1817,4 +2059,5 @@ def main():
 # =========================================================
 
 if __name__ == "__main__":
+
     main()
