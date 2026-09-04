@@ -1436,86 +1436,208 @@ async def hist(
 # sehingga tidak memblokir event loop Telegram.
 # =========================================================
 
-def get_customer_photo_sync(
-    cust_id
-):
+def get_customer_photo(cust_id):
 
-    if (
-        not PHOTO_API_URL
-        or
-        PHOTO_API_URL.startswith(
-            "PASTE_"
-        )
-    ):
-
-        print(
-            "[PHOTO API] PHOTO_API_URL belum dikonfigurasi."
-        )
-
+    if not PHOTO_API_URL:
+        print("[PHOTO] PHOTO_API_URL kosong.")
         return None
-
-
-    if (
-        not API_KEY
-        or
-        API_KEY.startswith(
-            "GANTI_"
-        )
-    ):
-
-        print(
-            "[PHOTO API] API_KEY belum dikonfigurasi."
-        )
-
-        return None
-
-
-    cust_id = str(
-        cust_id
-    ).strip()
-
-
-    if not cust_id:
-
-        print(
-            "[PHOTO API] CUST ID kosong."
-        )
-
-        return None
-
 
     try:
 
         print(
-            f"[PHOTO API] Meminta foto CUST ID={cust_id}"
+            f"[PHOTO] Mencari foto CUST ID={cust_id}"
         )
-
 
         response = requests.get(
             PHOTO_API_URL,
             params={
-                "cust_id": cust_id,
+                "cust_id": str(cust_id),
                 "api_key": API_KEY
             },
-            timeout=25
+            timeout=60
         )
-
 
         print(
-            f"[PHOTO API] HTTP={response.status_code}"
+            f"[PHOTO] HTTP={response.status_code}"
         )
-
 
         if response.status_code != 200:
 
             print(
-                "[PHOTO API] Response error:",
-                response.text[:500]
+                "[PHOTO] HTTP ERROR:",
+                response.text[:1000]
+            )
+
+            return None
+
+        try:
+
+            result = response.json()
+
+        except Exception as e:
+
+            print(
+                "[PHOTO] Response bukan JSON:",
+                e
+            )
+
+            print(
+                response.text[:1000]
             )
 
             return None
 
 
+        print(
+            "[PHOTO] API RESULT:",
+            {
+                "success": result.get("success"),
+                "has_photo": result.get("has_photo"),
+                "photo_type": result.get("photo_type"),
+                "mime_type": result.get("mime_type"),
+                "row": result.get("row"),
+                "error": result.get("error"),
+                "message": result.get("message")
+            }
+        )
+
+
+        if not result.get("success", False):
+
+            print(
+                "[PHOTO] API gagal:",
+                result.get(
+                    "error",
+                    "Unknown error"
+                )
+            )
+
+            return None
+
+
+        if not result.get(
+            "has_photo",
+            False
+        ):
+
+            print(
+                "[PHOTO] Customer ditemukan "
+                "tetapi foto tidak tersedia."
+            )
+
+            print(
+                "[PHOTO] DETAIL:",
+                result
+            )
+
+            return None
+
+
+        image_base64 = result.get(
+            "image_base64"
+        )
+
+
+        if not image_base64:
+
+            print(
+                "[PHOTO] has_photo=true "
+                "tetapi image_base64 kosong."
+            )
+
+            return None
+
+
+        try:
+
+            image_bytes = base64.b64decode(
+                image_base64,
+                validate=True
+            )
+
+        except Exception as e:
+
+            print(
+                "[PHOTO] Base64 tidak valid:",
+                e
+            )
+
+            return None
+
+
+        if not image_bytes:
+
+            print(
+                "[PHOTO] Image bytes kosong."
+            )
+
+            return None
+
+
+        mime_type = result.get(
+            "mime_type",
+            "image/jpeg"
+        )
+
+
+        if mime_type == "image/png":
+
+            extension = "png"
+
+        elif mime_type == "image/webp":
+
+            extension = "webp"
+
+        elif mime_type == "image/gif":
+
+            extension = "gif"
+
+        else:
+
+            extension = "jpg"
+
+
+        print(
+            f"[PHOTO] BERHASIL: "
+            f"{len(image_bytes)} bytes "
+            f"| MIME={mime_type}"
+        )
+
+
+        return (
+            image_bytes,
+            mime_type,
+            extension
+        )
+
+
+    except requests.exceptions.Timeout:
+
+        print(
+            "[PHOTO] Timeout saat mengambil foto dari Apps Script."
+        )
+
+        return None
+
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            "[PHOTO] Request error:",
+            e
+        )
+
+        return None
+
+
+    except Exception as e:
+
+        print(
+            "[PHOTO] Error:",
+            e
+        )
+
+        return None
         # -------------------------------------------------
         # Parse JSON
         # -------------------------------------------------
