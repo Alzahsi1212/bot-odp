@@ -1,8 +1,8 @@
 import pandas as pd
 import os
 import json
-import base64
 import io
+import re
 import requests
 
 from functools import wraps
@@ -46,7 +46,12 @@ CUSTOMER_URL = (
 
 
 # =========================================================
-# GOOGLE APPS SCRIPT - FOTO CUSTOMER
+# GOOGLE APPS SCRIPT
+# =========================================================
+# Tidak digunakan lagi untuk foto.
+#
+# Foto sekarang diambil langsung dari URL yang ada
+# pada kolom "Foto Rumah" di Sheet2.
 # =========================================================
 
 PHOTO_API_URL = (
@@ -59,12 +64,9 @@ PHOTO_API_URL = (
 # =========================================================
 # API KEY
 # =========================================================
-# PENTING:
-# Gunakan API KEY Anda yang sekarang.
-# Nilainya HARUS sama dengan API_KEY di Apps Script.
-#
-# Saya sengaja tidak menuliskan ulang credential rahasia
-# yang sudah Anda kirim sebelumnya.
+# Dipertahankan sesuai konfigurasi Anda.
+# Saat ini tidak diperlukan untuk mengambil foto karena
+# foto diambil langsung dari URL pada Sheet.
 # =========================================================
 
 API_KEY = "8962683694:AAHdUNfswp0hRAYyoBnfcsS3d8NKvdd9yzs"
@@ -100,10 +102,6 @@ def load_users():
 
     users = {}
 
-    # -----------------------------------------------------
-    # OWNER SELALU LEVEL 2
-    # -----------------------------------------------------
-
     try:
 
         owner_id = str(
@@ -121,10 +119,6 @@ def load_users():
             "OWNER_ID tidak valid."
         )
 
-
-    # -----------------------------------------------------
-    # BUAT USERS.JSON JIKA BELUM ADA
-    # -----------------------------------------------------
 
     if not os.path.exists(
         USERS_FILE
@@ -150,10 +144,6 @@ def load_users():
         return users
 
 
-    # -----------------------------------------------------
-    # BACA USERS.JSON
-    # -----------------------------------------------------
-
     try:
 
         with open(
@@ -166,10 +156,6 @@ def load_users():
                 f
             )
 
-
-        # -------------------------------------------------
-        # FORMAT DICTIONARY
-        # -------------------------------------------------
 
         if isinstance(
             data,
@@ -207,10 +193,6 @@ def load_users():
                     )
 
 
-        # -------------------------------------------------
-        # FORMAT LAMA LIST
-        # -------------------------------------------------
-
         elif isinstance(
             data,
             list
@@ -244,10 +226,6 @@ def load_users():
         )
 
 
-    # -----------------------------------------------------
-    # OWNER SELALU LEVEL 2
-    # -----------------------------------------------------
-
     try:
 
         users[
@@ -275,10 +253,6 @@ def save_users(users):
 
         normalized_users = {}
 
-
-        # -------------------------------------------------
-        # DICTIONARY
-        # -------------------------------------------------
 
         if isinstance(
             users,
@@ -317,10 +291,6 @@ def save_users(users):
                     )
 
 
-        # -------------------------------------------------
-        # LIST / SET FORMAT LAMA
-        # -------------------------------------------------
-
         else:
 
             for user_id in users:
@@ -341,18 +311,10 @@ def save_users(users):
                     )
 
 
-        # -------------------------------------------------
-        # OWNER SELALU LEVEL 2
-        # -------------------------------------------------
-
         normalized_users[
             str(int(OWNER_ID))
         ] = 2
 
-
-        # -------------------------------------------------
-        # SIMPAN
-        # -------------------------------------------------
 
         with open(
             USERS_FILE,
@@ -400,10 +362,6 @@ def get_user_level(user_id):
 
         return 0
 
-
-    # -----------------------------------------------------
-    # OWNER
-    # -----------------------------------------------------
 
     try:
 
@@ -1019,10 +977,6 @@ async def cari(
         return
 
 
-    # -----------------------------------------------------
-    # NOTIFIKASI GROUP
-    # -----------------------------------------------------
-
     try:
 
         await message.reply_text(
@@ -1036,10 +990,6 @@ async def cari(
             e
         )
 
-
-    # -----------------------------------------------------
-    # KIRIM KE PRIVATE
-    # -----------------------------------------------------
 
     try:
 
@@ -1302,7 +1252,8 @@ async def hist(
         "Nama",
         "SN",
         "BRIM ID",
-        "CUST ID"
+        "CUST ID",
+        "Foto Rumah"
     ]
 
 
@@ -1370,222 +1321,232 @@ async def hist(
 
 
 # =========================================================
-# GET CUSTOMER PHOTO
+# GOOGLE DRIVE URL
 # =========================================================
 
-def get_customer_photo(
-    cust_id
+def convert_google_drive_url(
+    url
+):
+    """
+    Mengubah berbagai format link Google Drive
+    menjadi URL download yang dapat diakses Python.
+    """
+
+    if not url:
+        return None
+
+
+    url = str(
+        url
+    ).strip()
+
+
+    if not url:
+        return None
+
+
+    # -----------------------------------------------------
+    # Jika sudah URL langsung
+    # -----------------------------------------------------
+
+    if (
+        "drive.google.com/uc?" in url
+        or
+        "googleusercontent.com" in url
+    ):
+
+        return url
+
+
+    # -----------------------------------------------------
+    # Format:
+    # https://drive.google.com/file/d/FILE_ID/view
+    # -----------------------------------------------------
+
+    match = re.search(
+        r"/file/d/([a-zA-Z0-9_-]+)",
+        url
+    )
+
+
+    if match:
+
+        file_id = match.group(1)
+
+        return (
+            "https://drive.google.com/uc"
+            f"?export=download&id={file_id}"
+        )
+
+
+    # -----------------------------------------------------
+    # Format:
+    # https://drive.google.com/open?id=FILE_ID
+    # -----------------------------------------------------
+
+    match = re.search(
+        r"[?&]id=([a-zA-Z0-9_-]+)",
+        url
+    )
+
+
+    if match:
+
+        file_id = match.group(1)
+
+        return (
+            "https://drive.google.com/uc"
+            f"?export=download&id={file_id}"
+        )
+
+
+    # -----------------------------------------------------
+    # Format:
+    # https://drive.google.com/uc?id=FILE_ID
+    # -----------------------------------------------------
+
+    match = re.search(
+        r"drive\.google\.com/uc.*?[?&]id=([a-zA-Z0-9_-]+)",
+        url
+    )
+
+
+    if match:
+
+        file_id = match.group(1)
+
+        return (
+            "https://drive.google.com/uc"
+            f"?export=download&id={file_id}"
+        )
+
+
+    # -----------------------------------------------------
+    # Jika bukan Google Drive
+    # -----------------------------------------------------
+    # Anggap sebagai URL gambar biasa.
+    # -----------------------------------------------------
+
+    if (
+        url.startswith("http://")
+        or
+        url.startswith("https://")
+    ):
+
+        return url
+
+
+    return None
+
+
+# =========================================================
+# DOWNLOAD FOTO DARI URL
+# =========================================================
+
+def get_customer_photo_from_url(
+    photo_url
 ):
 
-    if (
-        not PHOTO_API_URL
-        or
-        PHOTO_API_URL.startswith(
-            "PASTE_"
-        )
-    ):
+    if not photo_url:
 
         print(
-            "PHOTO_API_URL belum dikonfigurasi."
+            "[PHOTO] URL Foto Rumah kosong."
         )
 
         return None
 
 
-    if (
-        not API_KEY
-        or
-        API_KEY.startswith(
-            "ISI_DENGAN"
-        )
-    ):
+    photo_url = str(
+        photo_url
+    ).strip()
+
+
+    if not photo_url:
 
         print(
-            "API_KEY belum dikonfigurasi."
+            "[PHOTO] URL Foto Rumah kosong."
         )
 
         return None
+
+
+    print(
+        "[PHOTO] URL asli:"
+    )
+
+    print(
+        photo_url
+    )
+
+
+    download_url = (
+        convert_google_drive_url(
+            photo_url
+        )
+    )
+
+
+    if not download_url:
+
+        print(
+            "[PHOTO] URL tidak valid."
+        )
+
+        return None
+
+
+    print(
+        "[PHOTO] URL download:"
+    )
+
+    print(
+        download_url
+    )
 
 
     try:
 
-        print(
-            f"[PHOTO API] "
-            f"Mencari CUST ID={cust_id}"
-        )
-
-
         response = requests.get(
-            PHOTO_API_URL,
-            params={
-                "cust_id": str(
-                    cust_id
-                ),
-                "api_key": API_KEY
-            },
-            timeout=60
+            download_url,
+            timeout=60,
+            allow_redirects=True,
+            stream=True,
+            headers={
+                "User-Agent":
+                "Mozilla/5.0"
+            }
         )
 
 
         print(
-            f"[PHOTO API] "
-            f"HTTP={response.status_code}"
+            "[PHOTO] HTTP:",
+            response.status_code
         )
 
 
         if response.status_code != 200:
 
             print(
-                "[PHOTO API] Response:",
-                response.text[:1000]
-            )
-
-            return None
-
-
-        try:
-
-            result = response.json()
-
-        except Exception as e:
-
-            print(
-                "[PHOTO API] "
-                f"JSON tidak valid: {e}"
+                "[PHOTO] Gagal download."
             )
 
             print(
-                response.text[:1000]
-            )
-
-            return None
-
-
-        print(
-            "[PHOTO API] "
-            f"success={result.get('success')}"
-        )
-
-
-        if not result.get(
-            "success",
-            False
-        ):
-
-            print(
-                "[PHOTO API] "
-                f"Error={result.get('error', 'Unknown error')}"
-            )
-
-            return None
-
-
-        has_photo = result.get(
-            "has_photo",
-            False
-        )
-
-
-        if not has_photo:
-
-            print(
-                "[PHOTO API] "
-                "Customer ditemukan tetapi foto tidak tersedia."
-            )
-
-            print(
-                "[PHOTO API] "
-                f"photo_type={result.get('photo_type')}"
-            )
-
-            print(
-                "[PHOTO API] "
-                f"message={result.get('message')}"
-            )
-
-            return None
-
-
-        image_base64 = result.get(
-            "image_base64"
-        )
-
-
-        if not image_base64:
-
-            print(
-                "[PHOTO API] "
-                "image_base64 kosong."
+                "[PHOTO] Response:",
+                response.text[:500]
             )
 
             return None
 
 
         # -------------------------------------------------
-        # Jika API mengembalikan data URL
+        # Baca content type
         # -------------------------------------------------
 
-        if "," in image_base64:
-
-            prefix, image_base64 = (
-                image_base64.split(
-                    ",",
-                    1
-                )
-            )
-
-
-        # -------------------------------------------------
-        # Decode Base64
-        # -------------------------------------------------
-
-        try:
-
-            image_bytes = (
-                base64.b64decode(
-                    image_base64,
-                    validate=True
-                )
-            )
-
-        except Exception as e:
-
-            print(
-                "[PHOTO API] "
-                f"Base64 tidak valid: {e}"
-            )
-
-            return None
-
-
-        if not image_bytes:
-
-            print(
-                "[PHOTO API] "
-                "Image bytes kosong."
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # MIME TYPE
-        # -------------------------------------------------
-
-        mime_type = result.get(
-            "mime_type",
-            "image/jpeg"
-        )
-
-
-        if not mime_type:
-
-            mime_type = "image/jpeg"
-
-
-        mime_type = (
-            str(
-                mime_type
+        content_type = (
+            response.headers
+            .get(
+                "Content-Type",
+                ""
             )
             .lower()
             .split(
@@ -1594,6 +1555,103 @@ def get_customer_photo(
             )[0]
             .strip()
         )
+
+
+        print(
+            "[PHOTO] Content-Type:",
+            content_type
+        )
+
+
+        # -------------------------------------------------
+        # BACA BYTES
+        # -------------------------------------------------
+
+        image_bytes = response.content
+
+
+        if not image_bytes:
+
+            print(
+                "[PHOTO] File kosong."
+            )
+
+            return None
+
+
+        print(
+            "[PHOTO] Ukuran:",
+            len(image_bytes),
+            "bytes"
+        )
+
+
+        # -------------------------------------------------
+        # CEK APAKAH GOOGLE MENGEMBALIKAN HTML
+        # -------------------------------------------------
+
+        first_bytes = image_bytes[:100].lower()
+
+
+        if (
+            b"<html" in first_bytes
+            or
+            b"<!doctype" in first_bytes
+        ):
+
+            print(
+                "[PHOTO] Google mengembalikan HTML, "
+                "bukan file gambar."
+            )
+
+            return None
+
+
+        # -------------------------------------------------
+        # TENTUKAN MIME
+        # -------------------------------------------------
+
+        if content_type.startswith(
+            "image/"
+        ):
+
+            mime_type = content_type
+
+        else:
+
+            # Coba deteksi dari magic bytes
+
+            if image_bytes.startswith(
+                b"\x89PNG"
+            ):
+
+                mime_type = "image/png"
+
+            elif image_bytes.startswith(
+                b"\xff\xd8\xff"
+            ):
+
+                mime_type = "image/jpeg"
+
+            elif image_bytes.startswith(
+                b"GIF8"
+            ):
+
+                mime_type = "image/gif"
+
+            elif (
+                len(image_bytes) >= 12
+                and
+                image_bytes[:4] == b"RIFF"
+                and
+                image_bytes[8:12] == b"WEBP"
+            ):
+
+                mime_type = "image/webp"
+
+            else:
+
+                mime_type = "image/jpeg"
 
 
         # -------------------------------------------------
@@ -1614,15 +1672,23 @@ def get_customer_photo(
 
         else:
 
+            mime_type = "image/jpeg"
+
             extension = "jpg"
 
 
         print(
-            "[PHOTO API] "
-            f"Foto berhasil diterima. "
-            f"Type={result.get('photo_type')} "
-            f"MIME={mime_type} "
-            f"Size={len(image_bytes)} bytes"
+            "[PHOTO] Foto berhasil di-download."
+        )
+
+        print(
+            "[PHOTO] MIME:",
+            mime_type
+        )
+
+        print(
+            "[PHOTO] Extension:",
+            extension
         )
 
 
@@ -1636,8 +1702,7 @@ def get_customer_photo(
     except requests.exceptions.Timeout:
 
         print(
-            "[PHOTO API] "
-            "Request timeout."
+            "[PHOTO] Timeout saat download foto."
         )
 
         return None
@@ -1646,8 +1711,8 @@ def get_customer_photo(
     except requests.exceptions.RequestException as e:
 
         print(
-            "[PHOTO API] "
-            f"Request error: {e}"
+            "[PHOTO] Request error:",
+            e
         )
 
         return None
@@ -1656,8 +1721,8 @@ def get_customer_photo(
     except Exception as e:
 
         print(
-            "[PHOTO API] "
-            f"Error: {e}"
+            "[PHOTO] Error:",
+            e
         )
 
         return None
@@ -1837,6 +1902,18 @@ async def hist_detail_handler(
 
 
     # =====================================================
+    # FOTO URL
+    # =====================================================
+
+    photo_url = str(
+        row.get(
+            "Foto Rumah",
+            ""
+        )
+    ).strip()
+
+
+    # =====================================================
     # HAPUS PESAN LIST
     # =====================================================
 
@@ -1858,24 +1935,6 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # CUST ID KOSONG
-    # =====================================================
-
-    if not cust_id:
-
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=(
-                f"{caption_detail}\n"
-                "⚠️ CUST ID kosong, foto tidak dapat dicari."
-            ),
-            reply_markup=build_hist_back_keyboard()
-        )
-
-        return
-
-
-    # =====================================================
     # LOADING
     # =====================================================
 
@@ -1887,7 +1946,7 @@ async def hist_detail_handler(
         loading_msg = (
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text="🔄 Mencari foto rumah..."
+                text="🔄 Mengambil foto rumah..."
             )
         )
 
@@ -1900,11 +1959,43 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # AMBIL FOTO DARI APPS SCRIPT
+    # FOTO KOSONG
     # =====================================================
 
-    photo_result = get_customer_photo(
-        cust_id
+    if not photo_url:
+
+        if loading_msg:
+
+            try:
+
+                await loading_msg.delete()
+
+            except Exception:
+
+                pass
+
+
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=(
+                f"{caption_detail}\n\n"
+                "📷 Foto Rumah tidak tersedia.\n"
+                "URL Foto Rumah kosong di Sheet."
+            ),
+            reply_markup=build_hist_back_keyboard()
+        )
+
+        return
+
+
+    # =====================================================
+    # DOWNLOAD FOTO LANGSUNG DARI URL
+    # =====================================================
+
+    photo_result = (
+        get_customer_photo_from_url(
+            photo_url
+        )
     )
 
 
@@ -1932,8 +2023,12 @@ async def hist_detail_handler(
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=(
-                f"{caption_detail}\n"
-                "📷 Foto Rumah tidak tersedia."
+                f"{caption_detail}\n\n"
+                "📷 Foto Rumah tidak dapat diambil.\n\n"
+                "Pastikan link Google Drive:\n"
+                "• File dapat diakses oleh siapa saja yang memiliki link\n"
+                "• Link mengarah ke file gambar\n"
+                "• File tidak berada di folder/private yang membutuhkan login"
             ),
             reply_markup=build_hist_back_keyboard()
         )
@@ -1947,7 +2042,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # KIRIM FOTO
+    # KIRIM FOTO KE TELEGRAM
     # =====================================================
 
     try:
@@ -1991,8 +2086,10 @@ async def hist_detail_handler(
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=(
-                f"{caption_detail}\n"
-                "❌ Foto ditemukan, tetapi gagal dikirim ke Telegram."
+                f"{caption_detail}\n\n"
+                "❌ Foto berhasil ditemukan, "
+                "tetapi gagal dikirim ke Telegram.\n\n"
+                f"Error: {e}"
             ),
             reply_markup=build_hist_back_keyboard()
         )
@@ -2018,10 +2115,6 @@ async def hist_back_handler(
     await query.answer()
 
 
-    # =====================================================
-    # CEK AKSES
-    # =====================================================
-
     if not is_allowed(
         user.id
     ):
@@ -2039,10 +2132,6 @@ async def hist_back_handler(
 
         return
 
-
-    # =====================================================
-    # KEYWORD SEBELUMNYA
-    # =====================================================
 
     keyword = context.user_data.get(
         "hist_keyword"
@@ -2063,10 +2152,6 @@ async def hist_back_handler(
 
         return
 
-
-    # =====================================================
-    # DATA TERBARU
-    # =====================================================
 
     try:
 
@@ -2092,10 +2177,6 @@ async def hist_back_handler(
         return
 
 
-    # =====================================================
-    # CARI ULANG
-    # =====================================================
-
     hasil = build_hist_result(
         df,
         keyword
@@ -2117,10 +2198,6 @@ async def hist_back_handler(
         return
 
 
-    # =====================================================
-    # UPDATE INDEX
-    # =====================================================
-
     context.user_data[
         "hist_indexes"
     ] = [
@@ -2129,10 +2206,6 @@ async def hist_back_handler(
     ]
 
 
-    # =====================================================
-    # BUILD LIST
-    # =====================================================
-
     text, reply_markup = (
         build_hist_list_message(
             hasil,
@@ -2140,10 +2213,6 @@ async def hist_back_handler(
         )
     )
 
-
-    # =====================================================
-    # HAPUS DETAIL / FOTO
-    # =====================================================
 
     try:
 
@@ -2156,10 +2225,6 @@ async def hist_back_handler(
             f"Gagal menghapus detail/foto: {e}"
         )
 
-
-    # =====================================================
-    # KIRIM LIST LAGI
-    # =====================================================
 
     try:
 
@@ -2204,10 +2269,6 @@ async def list_all(
         )
 
 
-    # -----------------------------------------------------
-    # Telegram memiliki batas pesan.
-    # -----------------------------------------------------
-
     max_length = 4000
 
 
@@ -2219,10 +2280,6 @@ async def list_all(
 
         return
 
-
-    # -----------------------------------------------------
-    # Pecah pesan
-    # -----------------------------------------------------
 
     current = ""
 
@@ -2316,10 +2373,6 @@ async def button_handler(
     await query.answer()
 
 
-    # =====================================================
-    # CEK AKSES
-    # =====================================================
-
     if not is_allowed(
         user.id
     ):
@@ -2338,10 +2391,6 @@ async def button_handler(
 
         return
 
-
-    # =====================================================
-    # CARI
-    # =====================================================
 
     if query.data == "cari":
 
@@ -2369,10 +2418,6 @@ async def button_handler(
         return
 
 
-    # =====================================================
-    # INFO
-    # =====================================================
-
     if query.data == "info":
 
         await query.edit_message_text(
@@ -2384,10 +2429,6 @@ async def button_handler(
 
         return
 
-
-    # =====================================================
-    # HIST
-    # =====================================================
 
     if query.data == "hist":
 
@@ -2887,10 +2928,6 @@ def main():
         "================================="
     )
 
-
-    # =====================================================
-    # BUILD APPLICATION
-    # =====================================================
 
     app = (
         Application
