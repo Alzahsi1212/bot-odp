@@ -1450,7 +1450,7 @@ def get_customer_photo_from_url(
     if not photo_url:
 
         print(
-            "[PHOTO] URL Foto Rumah kosong."
+            "[PHOTO] Foto Rumah kosong."
         )
 
         return None
@@ -1464,7 +1464,7 @@ def get_customer_photo_from_url(
     if not photo_url:
 
         print(
-            "[PHOTO] URL Foto Rumah kosong."
+            "[PHOTO] Foto Rumah kosong."
         )
 
         return None
@@ -1980,7 +1980,6 @@ async def hist_detail_handler(
             text=(
                 f"{caption_detail}\n\n"
                 "📷 Foto Rumah tidak tersedia.\n"
-                "URL Foto Rumah kosong di Sheet."
             ),
             reply_markup=build_hist_back_keyboard()
         )
