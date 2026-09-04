@@ -4,6 +4,7 @@ import json
 import base64
 import io
 import requests
+import asyncio
 
 from functools import wraps
 
@@ -55,12 +56,20 @@ CUSTOMER_URL = (
 # =========================================================
 
 PHOTO_API_URL = (
-    "https://script.google.com/macros/s/AKfycbwkZ9B4Uhhgcg6zBvdJdGJ7DHtjTt196ExSwue4XVJr0QtjblkMDj84o45c3nIPaTME/exec"
+    "https://script.google.com/macros/s/AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/exec"
 )
 
 
 # =========================================================
 # API KEY
+# =========================================================
+#
+# Tetap langsung di kode.
+#
+# HARUS sama dengan API_KEY pada Apps Script.
+#
+# Jika API key/token lama sudah terekspos, ganti dengan
+# nilai baru.
 # =========================================================
 
 API_KEY = (
@@ -207,7 +216,6 @@ def load_users():
                         level
                     )
 
-                    # Pastikan level valid
                     if level < 1:
                         level = 1
 
@@ -586,8 +594,6 @@ def access_required(
 
 # =========================================================
 # LEVEL 2 DECORATOR
-#
-# Digunakan khusus untuk /cari
 # =========================================================
 
 def level2_required(
@@ -973,18 +979,6 @@ def build_cari_message(
 
 # =========================================================
 # CARI RK
-#
-# KHUSUS LEVEL 2
-#
-# Jika dari GROUP:
-# hasil TIDAK dikirim ke group.
-#
-# Bot hanya mengirim:
-#
-# 🔐 Hasil pencarian dikirim ke private chat Anda.
-#
-# Kemudian hasil dikirim ke private chat user.
-#
 # =========================================================
 
 @level2_required
@@ -1000,10 +994,6 @@ async def cari(
     if not user or not message:
         return
 
-
-    # =====================================================
-    # CEK ARGUMENT
-    # =====================================================
 
     if not context.args:
 
@@ -1027,10 +1017,6 @@ async def cari(
         return
 
 
-    # =====================================================
-    # AMBIL DATA
-    # =====================================================
-
     try:
 
         df = get_data()
@@ -1049,22 +1035,11 @@ async def cari(
         return
 
 
-    # =====================================================
-    # CARI RK
-    # =====================================================
-
     hasil = build_cari_result(
         df,
         rk
     )
 
-
-    # =====================================================
-    # RK TIDAK DITEMUKAN
-    #
-    # Pesan ini aman dikirim ke group karena
-    # tidak mengandung data hasil pencarian.
-    # =====================================================
 
     if hasil.empty:
 
@@ -1075,19 +1050,11 @@ async def cari(
         return
 
 
-    # =====================================================
-    # BUAT HASIL
-    # =====================================================
-
     text = build_cari_message(
         hasil,
         rk
     )
 
-
-    # =====================================================
-    # CEK APAKAH COMMAND DARI GROUP
-    # =====================================================
 
     chat = update.effective_chat
 
@@ -1099,12 +1066,6 @@ async def cari(
         chat.type == "private"
     )
 
-
-    # =====================================================
-    # JIKA COMMAND DARI PRIVATE CHAT
-    #
-    # Hasil langsung ditampilkan.
-    # =====================================================
 
     if is_private:
 
@@ -1122,14 +1083,6 @@ async def cari(
         return
 
 
-    # =====================================================
-    # JIKA COMMAND DARI GROUP
-    #
-    # JANGAN KIRIM HASIL KE GROUP.
-    #
-    # Kirim notifikasi terlebih dahulu.
-    # =====================================================
-
     try:
 
         await message.reply_text(
@@ -1143,12 +1096,6 @@ async def cari(
             e
         )
 
-
-    # =====================================================
-    # KIRIM HASIL KE PRIVATE CHAT
-    #
-    # chat_id user = user.id
-    # =====================================================
 
     try:
 
@@ -1175,11 +1122,6 @@ async def cari(
             e
         )
 
-
-        # -------------------------------------------------
-        # Gagal biasanya karena user belum pernah
-        # membuka private chat / belum /start bot.
-        # -------------------------------------------------
 
         try:
 
@@ -1485,10 +1427,16 @@ async def hist(
 
 
 # =========================================================
-# GET PHOTO FROM APPS SCRIPT
+# GET PHOTO FROM APPS SCRIPT - SYNC
+# =========================================================
+#
+# Fungsi ini sengaja tetap synchronous.
+#
+# Nanti dipanggil melalui asyncio.to_thread()
+# sehingga tidak memblokir event loop Telegram.
 # =========================================================
 
-def get_customer_photo(
+def get_customer_photo_sync(
     cust_id
 ):
 
@@ -1501,7 +1449,36 @@ def get_customer_photo(
     ):
 
         print(
-            "PHOTO_API_URL belum dikonfigurasi."
+            "[PHOTO API] PHOTO_API_URL belum dikonfigurasi."
+        )
+
+        return None
+
+
+    if (
+        not API_KEY
+        or
+        API_KEY.startswith(
+            "GANTI_"
+        )
+    ):
+
+        print(
+            "[PHOTO API] API_KEY belum dikonfigurasi."
+        )
+
+        return None
+
+
+    cust_id = str(
+        cust_id
+    ).strip()
+
+
+    if not cust_id:
+
+        print(
+            "[PHOTO API] CUST ID kosong."
         )
 
         return None
@@ -1509,34 +1486,62 @@ def get_customer_photo(
 
     try:
 
+        print(
+            f"[PHOTO API] Meminta foto CUST ID={cust_id}"
+        )
+
+
         response = requests.get(
             PHOTO_API_URL,
             params={
-                "cust_id": str(cust_id),
+                "cust_id": cust_id,
                 "api_key": API_KEY
             },
-            timeout=30
+            timeout=25
         )
 
 
         print(
-            f"[PHOTO API] "
-            f"HTTP={response.status_code}"
+            f"[PHOTO API] HTTP={response.status_code}"
         )
 
 
         if response.status_code != 200:
 
             print(
-                "PHOTO API error:",
+                "[PHOTO API] Response error:",
                 response.text[:500]
             )
 
             return None
 
 
-        result = response.json()
+        # -------------------------------------------------
+        # Parse JSON
+        # -------------------------------------------------
 
+        try:
+
+            result = response.json()
+
+        except Exception as e:
+
+            print(
+                "[PHOTO API] Response bukan JSON:",
+                e
+            )
+
+            print(
+                "[PHOTO API] Response:",
+                response.text[:500]
+            )
+
+            return None
+
+
+        # -------------------------------------------------
+        # CEK SUCCESS
+        # -------------------------------------------------
 
         if not result.get(
             "success",
@@ -1544,15 +1549,47 @@ def get_customer_photo(
         ):
 
             print(
-                "PHOTO API gagal:",
+                "[PHOTO API] API gagal:",
                 result.get(
                     "error",
                     "Unknown error"
                 )
             )
 
+            print(
+                "[PHOTO API] Message:",
+                result.get(
+                    "message",
+                    "-"
+                )
+            )
+
             return None
 
+
+        # -------------------------------------------------
+        # CEK HAS PHOTO
+        # -------------------------------------------------
+
+        has_photo = result.get(
+            "has_photo",
+            False
+        )
+
+
+        if not has_photo:
+
+            print(
+                f"[PHOTO API] "
+                f"Foto tidak tersedia untuk CUST ID={cust_id}"
+            )
+
+            return None
+
+
+        # -------------------------------------------------
+        # BASE64
+        # -------------------------------------------------
 
         image_base64 = result.get(
             "image_base64"
@@ -1562,33 +1599,190 @@ def get_customer_photo(
         if not image_base64:
 
             print(
-                "PHOTO API: image_base64 kosong."
+                "[PHOTO API] image_base64 kosong."
+            )
+
+            print(
+                "[PHOTO API] photo_type:",
+                result.get(
+                    "photo_type",
+                    "-"
+                )
+            )
+
+            print(
+                "[PHOTO API] foto_value:",
+                result.get(
+                    "foto_value",
+                    "-"
+                )
             )
 
             return None
 
 
-        image_bytes = base64.b64decode(
-            image_base64
+        # -------------------------------------------------
+        # Bersihkan prefix data URL jika ada
+        #
+        # Contoh:
+        #
+        # data:image/jpeg;base64,/9j/4AAQ...
+        #
+        # -------------------------------------------------
+
+        if "," in image_base64:
+
+            prefix, possible_base64 = (
+                image_base64.split(
+                    ",",
+                    1
+                )
+            )
+
+            if (
+                "base64"
+                in prefix.lower()
+            ):
+
+                image_base64 = (
+                    possible_base64
+                )
+
+
+        # -------------------------------------------------
+        # Decode base64
+        # -------------------------------------------------
+
+        try:
+
+            image_bytes = (
+                base64.b64decode(
+                    image_base64,
+                    validate=True
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                "[PHOTO API] Base64 tidak valid:",
+                e
+            )
+
+            return None
+
+
+        if not image_bytes:
+
+            print(
+                "[PHOTO API] Image bytes kosong."
+            )
+
+            return None
+
+
+        # -------------------------------------------------
+        # Ukuran file
+        # -------------------------------------------------
+
+        image_size = len(
+            image_bytes
         )
 
 
-        mime_type = result.get(
-            "mime_type",
-            "image/jpeg"
+        print(
+            f"[PHOTO API] "
+            f"Foto berhasil di-download. "
+            f"Size={image_size / 1024:.2f} KB"
         )
 
 
-        extension = (
-            "jpg"
-            if mime_type == "image/jpeg"
-            else
-            "png"
-            if mime_type == "image/png"
-            else
-            "jpg"
+        # -------------------------------------------------
+        # Telegram memiliki batas ukuran file.
+        #
+        # Kita gunakan batas aman 9 MB untuk send_photo.
+        # -------------------------------------------------
+
+        MAX_PHOTO_SIZE = (
+            9 * 1024 * 1024
         )
 
+
+        if image_size > MAX_PHOTO_SIZE:
+
+            print(
+                "[PHOTO API] "
+                f"Foto terlalu besar: "
+                f"{image_size / 1024 / 1024:.2f} MB"
+            )
+
+            return None
+
+
+        # -------------------------------------------------
+        # MIME TYPE
+        # -------------------------------------------------
+
+        mime_type = str(
+            result.get(
+                "mime_type",
+                "image/jpeg"
+            )
+        ).lower().strip()
+
+
+        allowed_mime_types = {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp",
+            "image/gif"
+        }
+
+
+        if mime_type not in allowed_mime_types:
+
+            print(
+                f"[PHOTO API] MIME type tidak dikenal: "
+                f"{mime_type}"
+            )
+
+            mime_type = (
+                "image/jpeg"
+            )
+
+
+        # -------------------------------------------------
+        # Extension
+        # -------------------------------------------------
+
+        if mime_type in (
+            "image/jpeg",
+            "image/jpg"
+        ):
+
+            extension = "jpg"
+
+        elif mime_type == "image/png":
+
+            extension = "png"
+
+        elif mime_type == "image/webp":
+
+            extension = "webp"
+
+        elif mime_type == "image/gif":
+
+            extension = "gif"
+
+        else:
+
+            extension = "jpg"
+
+
+        # -------------------------------------------------
+        # Return
+        # -------------------------------------------------
 
         return (
             image_bytes,
@@ -1597,14 +1791,59 @@ def get_customer_photo(
         )
 
 
-    except Exception as e:
+    except requests.exceptions.Timeout:
 
         print(
-            "Gagal mengambil foto customer:",
+            f"[PHOTO API] Timeout mengambil foto "
+            f"CUST ID={cust_id}"
+        )
+
+        return None
+
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            f"[PHOTO API] Request error "
+            f"CUST ID={cust_id}:",
             e
         )
 
         return None
+
+
+    except Exception as e:
+
+        print(
+            f"[PHOTO API] Error "
+            f"CUST ID={cust_id}:",
+            e
+        )
+
+        return None
+
+
+# =========================================================
+# GET PHOTO FROM APPS SCRIPT - ASYNC
+# =========================================================
+#
+# INI BAGIAN PENTING.
+#
+# requests.get() tidak dijalankan langsung dalam async
+# handler.
+#
+# asyncio.to_thread() membuat proses HTTP berjalan
+# di thread sehingga bot tetap responsif.
+# =========================================================
+
+async def get_customer_photo(
+    cust_id
+):
+
+    return await asyncio.to_thread(
+        get_customer_photo_sync,
+        cust_id
+    )
 
 
 # =========================================================
@@ -1662,6 +1901,10 @@ async def hist_detail_handler(
 
     query = update.callback_query
 
+    if not query:
+        return
+
+
     user = query.from_user
 
     await query.answer()
@@ -1675,10 +1918,20 @@ async def hist_detail_handler(
         user.id
     ):
 
-        await query.edit_message_text(
-            "⛔️ AKSES DITOLAK\n\n"
-            "Anda tidak memiliki akses."
-        )
+        try:
+
+            await query.edit_message_text(
+                "⛔️ AKSES DITOLAK\n\n"
+                "Anda tidak memiliki akses."
+            )
+
+        except Exception as e:
+
+            print(
+                "[HIST DETAIL] "
+                "Gagal edit pesan akses:",
+                e
+            )
 
         return
 
@@ -1799,17 +2052,35 @@ async def hist_detail_handler(
     # NOTIFIKASI SEMENTARA
     # =====================================================
 
-    loading_msg = await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text="🔄 Mencari foto rumah..."
-    )
+    loading_msg = None
+
+
+    try:
+
+        loading_msg = await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=(
+                "🔄 Mencari foto rumah...\n\n"
+                f"CUST ID: {cust_id}"
+            )
+        )
+
+    except Exception as e:
+
+        print(
+            "[HIST DETAIL] "
+            "Gagal mengirim loading message:",
+            e
+        )
 
 
     # =====================================================
     # AMBIL FOTO
+    #
+    # Sekarang TIDAK memblokir event loop Telegram.
     # =====================================================
 
-    photo_result = get_customer_photo(
+    photo_result = await get_customer_photo(
         cust_id
     )
 
@@ -1818,13 +2089,15 @@ async def hist_detail_handler(
     # HAPUS PESAN STATUS PENCARIAN
     # =====================================================
 
-    try:
+    if loading_msg:
 
-        await loading_msg.delete()
+        try:
 
-    except Exception:
+            await loading_msg.delete()
 
-        pass
+        except Exception:
+
+            pass
 
 
     # =====================================================
@@ -1837,7 +2110,8 @@ async def hist_detail_handler(
             chat_id=query.message.chat_id,
             text=(
                 f"{caption_detail}\n"
-                "📷 Foto Rumah tidak tersedia."
+                "📷 Foto Rumah tidak tersedia atau "
+                "tidak dapat diakses dari Google Sheet."
             ),
             reply_markup=build_hist_back_keyboard()
         )
@@ -1851,7 +2125,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # KIRIM FOTO DENGAN CAPTION DETAIL
+    # KIRIM FOTO
     # =====================================================
 
     try:
@@ -1866,6 +2140,9 @@ async def hist_detail_handler(
         )
 
 
+        photo_file.seek(0)
+
+
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
             photo=photo_file,
@@ -1875,27 +2152,76 @@ async def hist_detail_handler(
 
 
         print(
-            f"[PHOTO SENT WITH CAPTION] "
-            f"CUST ID={cust_id}"
+            f"[PHOTO SENT] "
+            f"CUST ID={cust_id} "
+            f"SIZE={len(image_bytes) / 1024:.2f} KB "
+            f"MIME={mime_type}"
         )
 
 
     except Exception as e:
 
         print(
-            "Gagal mengirim foto Telegram:",
-            e
+            "[PHOTO TELEGRAM ERROR]",
+            repr(e)
         )
 
 
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=(
-                f"{caption_detail}\n"
-                "❌ Foto ditemukan, tetapi gagal dikirim ke Telegram."
-            ),
-            reply_markup=build_hist_back_keyboard()
-        )
+        # -------------------------------------------------
+        # Fallback:
+        # Jika send_photo gagal, coba kirim sebagai document.
+        # -------------------------------------------------
+
+        try:
+
+            document_file = io.BytesIO(
+                image_bytes
+            )
+
+
+            document_file.name = (
+                f"foto_rumah_{cust_id}.{extension}"
+            )
+
+
+            document_file.seek(0)
+
+
+            await context.bot.send_document(
+                chat_id=query.message.chat_id,
+                document=document_file,
+                caption=(
+                    f"{caption_detail}\n"
+                    "📷 Foto Rumah dikirim sebagai file "
+                    "karena Telegram menolak format foto langsung."
+                ),
+                reply_markup=build_hist_back_keyboard()
+            )
+
+
+            print(
+                f"[PHOTO SENT AS DOCUMENT] "
+                f"CUST ID={cust_id}"
+            )
+
+
+        except Exception as document_error:
+
+            print(
+                "[PHOTO DOCUMENT ERROR]",
+                repr(document_error)
+            )
+
+
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=(
+                    f"{caption_detail}\n"
+                    "❌ Foto ditemukan, tetapi gagal dikirim ke Telegram.\n\n"
+                    f"Error: {str(e)[:300]}"
+                ),
+                reply_markup=build_hist_back_keyboard()
+            )
 
 
 # =========================================================
@@ -1908,6 +2234,10 @@ async def hist_back_handler(
 ):
 
     query = update.callback_query
+
+    if not query:
+        return
+
 
     user = query.from_user
 
@@ -1937,7 +2267,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # AMBIL KEYWORD PENCARIAN SEBELUMNYA
+    # AMBIL KEYWORD
     # =====================================================
 
     keyword = context.user_data.get(
@@ -1961,7 +2291,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # AMBIL DATA CUSTOMER TERBARU
+    # DATA CUSTOMER
     # =====================================================
 
     try:
@@ -1989,7 +2319,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # CARI ULANG BERDASARKAN KEYWORD
+    # CARI ULANG
     # =====================================================
 
     hasil = build_hist_result(
@@ -2014,7 +2344,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # UPDATE INDEX HASIL PENCARIAN
+    # UPDATE INDEX
     # =====================================================
 
     context.user_data[
@@ -2026,7 +2356,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # BUAT ULANG LIST CUSTOMER
+    # BUILD LIST
     # =====================================================
 
     text, reply_markup = build_hist_list_message(
@@ -2036,7 +2366,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # HAPUS PESAN FOTO / DETAIL TERLEBIH DAHULU
+    # HAPUS PESAN FOTO / DETAIL
     # =====================================================
 
     try:
@@ -2057,7 +2387,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # KIRIM ULANG LIST CUSTOMER
+    # KIRIM ULANG LIST
     # =====================================================
 
     try:
@@ -2168,6 +2498,10 @@ async def button_handler(
 
     query = update.callback_query
 
+    if not query:
+        return
+
+
     user = query.from_user
 
     await query.answer()
@@ -2197,8 +2531,6 @@ async def button_handler(
 
     # =====================================================
     # BUTTON CARI
-    #
-    # HANYA LEVEL 2
     # =====================================================
 
     if query.data == "cari":
@@ -2263,17 +2595,6 @@ async def button_handler(
 
 # =========================================================
 # ADD USER
-#
-# Sekarang:
-#
-# /adduser <Telegram ID>
-#
-# Default level = 1
-#
-# Untuk menambahkan Level 2:
-#
-# /adduser <Telegram ID> 2
-#
 # =========================================================
 
 async def adduser(
@@ -2311,10 +2632,6 @@ async def adduser(
         return
 
 
-    # =====================================================
-    # TELEGRAM ID
-    # =====================================================
-
     try:
 
         new_user_id = int(
@@ -2329,10 +2646,6 @@ async def adduser(
 
         return
 
-
-    # =====================================================
-    # LEVEL
-    # =====================================================
 
     level = 1
 
@@ -2356,10 +2669,6 @@ async def adduser(
             return
 
 
-    # =====================================================
-    # VALIDASI LEVEL
-    # =====================================================
-
     if level not in (
         1,
         2
@@ -2374,10 +2683,6 @@ async def adduser(
         return
 
 
-    # =====================================================
-    # OWNER TIDAK PERLU DITAMBAHKAN
-    # =====================================================
-
     if new_user_id == int(
         OWNER_ID
     ):
@@ -2389,16 +2694,8 @@ async def adduser(
         return
 
 
-    # =====================================================
-    # LOAD USERS
-    # =====================================================
-
     allowed_users = load_users()
 
-
-    # =====================================================
-    # JIKA SUDAH ADA
-    # =====================================================
 
     if str(
         new_user_id
@@ -2409,7 +2706,6 @@ async def adduser(
         ]
 
 
-        # Update level
         allowed_users[
             str(new_user_id)
         ] = level
@@ -2439,10 +2735,6 @@ async def adduser(
         return
 
 
-    # =====================================================
-    # TAMBAHKAN USER BARU
-    # =====================================================
-
     allowed_users[
         str(new_user_id)
     ] = level
@@ -2452,10 +2744,6 @@ async def adduser(
         allowed_users
     )
 
-
-    # =====================================================
-    # VERIFY
-    # =====================================================
 
     verify_users = load_users()
 
@@ -2674,15 +2962,6 @@ async def users(
 
 # =========================================================
 # SET LEVEL
-#
-# Command tambahan:
-#
-# /setlevel <Telegram ID> <level>
-#
-# Contoh:
-#
-# /setlevel 392836663 2
-#
 # =========================================================
 
 async def setlevel(
@@ -2813,6 +3092,32 @@ async def setlevel(
 
 
 # =========================================================
+# ERROR HANDLER
+# =========================================================
+
+async def error_handler(
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    print(
+        "================================="
+    )
+
+    print(
+        "[BOT ERROR]"
+    )
+
+    print(
+        repr(context.error)
+    )
+
+    print(
+        "================================="
+    )
+
+
+# =========================================================
 # MAIN
 # =========================================================
 
@@ -2840,6 +3145,21 @@ def main():
 
     print(
         f"USERS: {load_users()}"
+    )
+
+
+    print(
+        "PHOTO API: AKTIF"
+    )
+
+
+    print(
+        "PHOTO MODE: GOOGLE SHEET IMAGE IN CELL"
+    )
+
+
+    print(
+        "ASYNC PHOTO REQUEST: AKTIF"
     )
 
 
@@ -2976,6 +3296,15 @@ def main():
         CallbackQueryHandler(
             button_handler
         )
+    )
+
+
+    # =====================================================
+    # ERROR HANDLER
+    # =====================================================
+
+    app.add_error_handler(
+        error_handler
     )
 
 
