@@ -92,23 +92,64 @@ cached_customer_df = None
 
 
 # =========================================================
-# USER ACCESS
+# USER ACCESS / LEVEL
+#
+# Format users.json:
+#
+# {
+#     "123456789": 2,
+#     "987654321": 1
+# }
+#
+# Level:
+#
+# 0 = tidak memiliki akses
+# 1 = user biasa
+# 2 = user level 2
+#
+# Owner selalu level 2.
 # =========================================================
+
 
 def load_users():
 
-    users = set()
+    users = {}
 
-    # Owner selalu memiliki akses
-    users.add(
-        int(OWNER_ID)
-    )
+    # -----------------------------------------------------
+    # Owner selalu level 2
+    # -----------------------------------------------------
 
-    if not os.path.exists(USERS_FILE):
+    try:
+
+        owner_id = str(
+            int(OWNER_ID)
+        )
+
+        users[owner_id] = 2
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        print(
+            "OWNER_ID tidak valid."
+        )
+
+
+    # -----------------------------------------------------
+    # Jika users.json belum ada
+    # -----------------------------------------------------
+
+    if not os.path.exists(
+        USERS_FILE
+    ):
 
         try:
 
-            save_users(users)
+            save_users(
+                users
+            )
 
             print(
                 "users.json dibuat."
@@ -123,6 +164,11 @@ def load_users():
 
         return users
 
+
+    # -----------------------------------------------------
+    # Baca users.json
+    # -----------------------------------------------------
+
     try:
 
         with open(
@@ -131,24 +177,91 @@ def load_users():
             encoding="utf-8"
         ) as f:
 
-            data = json.load(f)
+            data = json.load(
+                f
+            )
 
-        for user_id in data:
 
-            try:
+        # -------------------------------------------------
+        # FORMAT BARU
+        #
+        # {
+        #   "123456": 2
+        # }
+        # -------------------------------------------------
 
-                users.add(
-                    int(user_id)
-                )
+        if isinstance(
+            data,
+            dict
+        ):
 
-            except (
-                ValueError,
-                TypeError
-            ):
+            for user_id, level in data.items():
 
-                print(
-                    f"ID user tidak valid di users.json: {user_id}"
-                )
+                try:
+
+                    user_id = str(
+                        int(user_id)
+                    )
+
+                    level = int(
+                        level
+                    )
+
+                    # Pastikan level valid
+                    if level < 1:
+                        level = 1
+
+                    if level > 2:
+                        level = 2
+
+                    users[user_id] = level
+
+                except (
+                    ValueError,
+                    TypeError
+                ):
+
+                    print(
+                        f"Data user tidak valid: "
+                        f"{user_id} -> {level}"
+                    )
+
+
+        # -------------------------------------------------
+        # FORMAT LAMA
+        #
+        # [
+        #   123456,
+        #   987654
+        # ]
+        #
+        # Semua user lama dianggap level 1.
+        # -------------------------------------------------
+
+        elif isinstance(
+            data,
+            list
+        ):
+
+            for user_id in data:
+
+                try:
+
+                    user_id = str(
+                        int(user_id)
+                    )
+
+                    users[user_id] = 1
+
+                except (
+                    ValueError,
+                    TypeError
+                ):
+
+                    print(
+                        f"ID user tidak valid: {user_id}"
+                    )
+
 
     except Exception as e:
 
@@ -157,10 +270,24 @@ def load_users():
             e
         )
 
-    # Owner selalu ditambahkan
-    users.add(
-        int(OWNER_ID)
-    )
+
+    # -----------------------------------------------------
+    # Owner selalu level 2
+    # -----------------------------------------------------
+
+    try:
+
+        users[
+            str(int(OWNER_ID))
+        ] = 2
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        pass
+
 
     return users
 
@@ -169,16 +296,93 @@ def load_users():
 # SAVE USERS
 # =========================================================
 
-def save_users(users):
+def save_users(
+    users
+):
 
     try:
 
-        data = sorted(
-            [
-                int(user_id)
-                for user_id in users
-            ]
-        )
+        normalized_users = {}
+
+        # -------------------------------------------------
+        # Jika menerima dictionary
+        # -------------------------------------------------
+
+        if isinstance(
+            users,
+            dict
+        ):
+
+            for user_id, level in users.items():
+
+                try:
+
+                    user_id = str(
+                        int(user_id)
+                    )
+
+                    level = int(
+                        level
+                    )
+
+                    if level < 1:
+                        level = 1
+
+                    if level > 2:
+                        level = 2
+
+                    normalized_users[
+                        user_id
+                    ] = level
+
+                except (
+                    ValueError,
+                    TypeError
+                ):
+
+                    print(
+                        f"User tidak valid: "
+                        f"{user_id}"
+                    )
+
+
+        # -------------------------------------------------
+        # Support format set/list lama
+        # -------------------------------------------------
+
+        else:
+
+            for user_id in users:
+
+                try:
+
+                    normalized_users[
+                        str(int(user_id))
+                    ] = 1
+
+                except (
+                    ValueError,
+                    TypeError
+                ):
+
+                    print(
+                        f"User tidak valid: "
+                        f"{user_id}"
+                    )
+
+
+        # -------------------------------------------------
+        # Owner selalu level 2
+        # -------------------------------------------------
+
+        normalized_users[
+            str(int(OWNER_ID))
+        ] = 2
+
+
+        # -------------------------------------------------
+        # Simpan
+        # -------------------------------------------------
 
         with open(
             USERS_FILE,
@@ -187,14 +391,17 @@ def save_users(users):
         ) as f:
 
             json.dump(
-                data,
+                normalized_users,
                 f,
                 indent=4
             )
 
+
         print(
-            f"users.json berhasil disimpan: {data}"
+            f"users.json berhasil disimpan: "
+            f"{normalized_users}"
         )
+
 
     except Exception as e:
 
@@ -205,15 +412,17 @@ def save_users(users):
 
 
 # =========================================================
-# IS ALLOWED
+# GET USER LEVEL
 # =========================================================
 
-def is_allowed(user_id):
+def get_user_level(
+    user_id
+):
 
     try:
 
-        user_id = int(
-            user_id
+        user_id = str(
+            int(user_id)
         )
 
     except (
@@ -221,24 +430,83 @@ def is_allowed(user_id):
         TypeError
     ):
 
-        return False
+        return 0
 
-    allowed_users = load_users()
 
-    return user_id in allowed_users
+    # -----------------------------------------------------
+    # Owner selalu level 2
+    # -----------------------------------------------------
+
+    try:
+
+        if int(user_id) == int(
+            OWNER_ID
+        ):
+
+            return 2
+
+    except (
+        ValueError,
+        TypeError
+    ):
+
+        pass
+
+
+    users = load_users()
+
+    return int(
+        users.get(
+            user_id,
+            0
+        )
+    )
+
+
+# =========================================================
+# IS ALLOWED
+# =========================================================
+
+def is_allowed(
+    user_id
+):
+
+    return (
+        get_user_level(
+            user_id
+        ) >= 1
+    )
+
+
+# =========================================================
+# IS LEVEL 2
+# =========================================================
+
+def is_level2(
+    user_id
+):
+
+    return (
+        get_user_level(
+            user_id
+        ) >= 2
+    )
 
 
 # =========================================================
 # IS OWNER
 # =========================================================
 
-def is_owner(user_id):
+def is_owner(
+    user_id
+):
 
     try:
 
         return (
             int(user_id)
-            == int(OWNER_ID)
+            ==
+            int(OWNER_ID)
         )
 
     except (
@@ -253,7 +521,9 @@ def is_owner(user_id):
 # ACCESS DECORATOR
 # =========================================================
 
-def access_required(func):
+def access_required(
+    func
+):
 
     @wraps(func)
     async def wrapper(
@@ -266,15 +536,21 @@ def access_required(func):
         if not user:
             return
 
+
+        level = get_user_level(
+            user.id
+        )
+
+
         print(
             f"[ACCESS CHECK] "
             f"ID={user.id} "
-            f"Username=@{user.username}"
+            f"Username=@{user.username} "
+            f"Level={level}"
         )
 
-        if not is_allowed(
-            user.id
-        ):
+
+        if level < 1:
 
             if update.message:
 
@@ -291,15 +567,87 @@ def access_required(func):
 
             return
 
+
         print(
             f"[ACCESS GRANTED] "
-            f"ID={user.id}"
+            f"ID={user.id} "
+            f"Level={level}"
         )
+
 
         return await func(
             update,
             context
         )
+
+
+    return wrapper
+
+
+# =========================================================
+# LEVEL 2 DECORATOR
+#
+# Digunakan khusus untuk /cari
+# =========================================================
+
+def level2_required(
+    func
+):
+
+    @wraps(func)
+    async def wrapper(
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE
+    ):
+
+        user = update.effective_user
+
+        if not user:
+            return
+
+
+        level = get_user_level(
+            user.id
+        )
+
+
+        print(
+            f"[LEVEL 2 CHECK] "
+            f"ID={user.id} "
+            f"Username=@{user.username} "
+            f"Level={level}"
+        )
+
+
+        if level < 2:
+
+            if update.message:
+
+                await update.message.reply_text(
+                    "⛔️ AKSES DITOLAK\n\n"
+                    "Menu /cari hanya dapat digunakan "
+                    "oleh user Level 2."
+                )
+
+            print(
+                f"[LEVEL 2 DENIED] "
+                f"ID={user.id}"
+            )
+
+            return
+
+
+        print(
+            f"[LEVEL 2 GRANTED] "
+            f"ID={user.id}"
+        )
+
+
+        return await func(
+            update,
+            context
+        )
+
 
     return wrapper
 
@@ -308,7 +656,9 @@ def access_required(func):
 # NORMALIZE
 # =========================================================
 
-def normalize(text):
+def normalize(
+    text
+):
 
     return str(
         text
@@ -503,14 +853,16 @@ async def info(
 
         await update.message.reply_text(
             "Format: /info <Nama ODP>\n"
-            "Contoh: /info KMR010101"
+            "Contoh: /info GPK020101"
         )
 
         return
 
+
     nama_odp = context.args[0]
 
     df = get_data()
+
 
     mask = (
         df["Nama ODP"]
@@ -520,7 +872,9 @@ async def info(
         normalize(nama_odp)
     )
 
+
     hasil = df[mask]
+
 
     if hasil.empty:
 
@@ -530,7 +884,9 @@ async def info(
 
         return
 
+
     row = hasil.iloc[0]
+
 
     pesan = f"""
 📌 INFO ODP
@@ -559,33 +915,20 @@ Port15   : {row['Port15']}
 Port16   : {row['Port16']}
 """
 
+
     await update.message.reply_text(
         pesan
     )
 
 
 # =========================================================
-# CARI RK
+# BUILD CARI RESULT
 # =========================================================
 
-@access_required
-async def cari(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+def build_cari_result(
+    df,
+    rk
 ):
-
-    if not context.args:
-
-        await update.message.reply_text(
-            "Format: /cari <RK>\n"
-            "Contoh: /cari KMR"
-        )
-
-        return
-
-    rk = context.args[0]
-
-    df = get_data()
 
     mask = (
         df["RK"]
@@ -595,15 +938,17 @@ async def cari(
         normalize(rk)
     )
 
-    hasil = df[mask]
+    return df[mask]
 
-    if hasil.empty:
 
-        await update.message.reply_text(
-            "RK tidak ditemukan."
-        )
+# =========================================================
+# BUILD CARI MESSAGE
+# =========================================================
 
-        return
+def build_cari_message(
+    hasil,
+    rk
+):
 
     text = (
         f"📍 LIST ODP RK {rk.upper()}\n\n"
@@ -613,6 +958,7 @@ async def cari(
         f"Daftar ODP:\n"
     )
 
+
     for _, row in hasil.iterrows():
 
         text += (
@@ -621,9 +967,235 @@ async def cari(
             f" | {row.get('Lokasi', '-')}\n"
         )
 
-    await update.message.reply_text(
-        text
+
+    return text
+
+
+# =========================================================
+# CARI RK
+#
+# KHUSUS LEVEL 2
+#
+# Jika dari GROUP:
+# hasil TIDAK dikirim ke group.
+#
+# Bot hanya mengirim:
+#
+# 🔐 Hasil pencarian dikirim ke private chat Anda.
+#
+# Kemudian hasil dikirim ke private chat user.
+#
+# =========================================================
+
+@level2_required
+async def cari(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+    message = update.message
+
+    if not user or not message:
+        return
+
+
+    # =====================================================
+    # CEK ARGUMENT
+    # =====================================================
+
+    if not context.args:
+
+        await message.reply_text(
+            "Format: /cari <RK>\n"
+            "Contoh: /cari GPK0"
+        )
+
+        return
+
+
+    rk = context.args[0].strip()
+
+
+    if not rk:
+
+        await message.reply_text(
+            "❌ RK tidak boleh kosong."
+        )
+
+        return
+
+
+    # =====================================================
+    # AMBIL DATA
+    # =====================================================
+
+    try:
+
+        df = get_data()
+
+    except Exception as e:
+
+        print(
+            "Gagal mengambil data ODP:",
+            e
+        )
+
+        await message.reply_text(
+            "❌ Gagal membaca data ODP."
+        )
+
+        return
+
+
+    # =====================================================
+    # CARI RK
+    # =====================================================
+
+    hasil = build_cari_result(
+        df,
+        rk
     )
+
+
+    # =====================================================
+    # RK TIDAK DITEMUKAN
+    #
+    # Pesan ini aman dikirim ke group karena
+    # tidak mengandung data hasil pencarian.
+    # =====================================================
+
+    if hasil.empty:
+
+        await message.reply_text(
+            "❌ RK tidak ditemukan."
+        )
+
+        return
+
+
+    # =====================================================
+    # BUAT HASIL
+    # =====================================================
+
+    text = build_cari_message(
+        hasil,
+        rk
+    )
+
+
+    # =====================================================
+    # CEK APAKAH COMMAND DARI GROUP
+    # =====================================================
+
+    chat = update.effective_chat
+
+    if not chat:
+        return
+
+
+    is_private = (
+        chat.type == "private"
+    )
+
+
+    # =====================================================
+    # JIKA COMMAND DARI PRIVATE CHAT
+    #
+    # Hasil langsung ditampilkan.
+    # =====================================================
+
+    if is_private:
+
+        await message.reply_text(
+            text
+        )
+
+        print(
+            f"[CARI] "
+            f"User={user.id} "
+            f"RK={rk} "
+            f"CHAT=PRIVATE"
+        )
+
+        return
+
+
+    # =====================================================
+    # JIKA COMMAND DARI GROUP
+    #
+    # JANGAN KIRIM HASIL KE GROUP.
+    #
+    # Kirim notifikasi terlebih dahulu.
+    # =====================================================
+
+    try:
+
+        await message.reply_text(
+            "🔐 Hasil pencarian dikirim ke private chat Anda."
+        )
+
+    except Exception as e:
+
+        print(
+            "[CARI] Gagal mengirim notifikasi ke group:",
+            e
+        )
+
+
+    # =====================================================
+    # KIRIM HASIL KE PRIVATE CHAT
+    #
+    # chat_id user = user.id
+    # =====================================================
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=text
+        )
+
+
+        print(
+            f"[CARI] "
+            f"Hasil RK={rk} "
+            f"berhasil dikirim ke private chat "
+            f"User={user.id}"
+        )
+
+
+    except Exception as e:
+
+        print(
+            f"[CARI] "
+            f"Gagal mengirim private message "
+            f"User={user.id}:",
+            e
+        )
+
+
+        # -------------------------------------------------
+        # Gagal biasanya karena user belum pernah
+        # membuka private chat / belum /start bot.
+        # -------------------------------------------------
+
+        try:
+
+            await message.reply_text(
+                "⚠️ Saya tidak dapat mengirim hasil ke private chat Anda.\n\n"
+                "Silakan buka private chat bot ini lalu tekan /start.\n"
+                "Setelah itu ulangi /cari <RK> di grup."
+            )
+
+        except Exception as notify_error:
+
+            print(
+                "[CARI] "
+                "Gagal mengirim pesan error ke group:",
+                notify_error
+            )
 
 
 # =========================================================
@@ -639,6 +1211,7 @@ def build_hist_result(
         keyword
     )
 
+
     mask_nama = (
         df["Nama"]
         .astype(str)
@@ -650,6 +1223,7 @@ def build_hist_result(
         )
     )
 
+
     mask_sn = (
         df["SN"]
         .astype(str)
@@ -658,6 +1232,7 @@ def build_hist_result(
         ==
         keyword_normalized
     )
+
 
     mask_brim = (
         df["BRIM ID"]
@@ -668,6 +1243,7 @@ def build_hist_result(
         keyword_normalized
     )
 
+
     mask_cust = (
         df["CUST ID"]
         .astype(str)
@@ -676,6 +1252,7 @@ def build_hist_result(
         ==
         keyword_normalized
     )
+
 
     return df[
         mask_nama
@@ -698,6 +1275,7 @@ def build_hist_keyboard(
 
     keyboard = []
 
+
     for index, row in hasil.iterrows():
 
         nama = str(
@@ -707,6 +1285,7 @@ def build_hist_keyboard(
             )
         ).strip()
 
+
         cust_id = str(
             row.get(
                 "CUST ID",
@@ -714,17 +1293,21 @@ def build_hist_keyboard(
             )
         ).strip()
 
-        # Jika nama kosong
+
         if not nama:
+
             nama = "Nama tidak tersedia"
 
-        # Jika CUST ID kosong
+
         if not cust_id:
+
             cust_id = "CUST ID kosong"
+
 
         callback_data = (
             f"hist_detail:{index}"
         )
+
 
         keyboard.append(
             [
@@ -734,6 +1317,7 @@ def build_hist_keyboard(
                 )
             ]
         )
+
 
     return keyboard
 
@@ -751,12 +1335,14 @@ def build_hist_list_message(
         hasil
     )
 
+
     text = (
         "🔎 HASIL PENCARIAN CUSTOMER\n\n"
         f"Keyword : {keyword}\n"
         f"Ditemukan : {len(hasil)} data\n\n"
         "Silakan pilih customer:"
     )
+
 
     return (
         text,
@@ -796,9 +1382,11 @@ async def hist(
 
         return
 
+
     keyword = " ".join(
         context.args
     ).strip()
+
 
     if not keyword:
 
@@ -807,6 +1395,7 @@ async def hist(
         )
 
         return
+
 
     try:
 
@@ -825,6 +1414,7 @@ async def hist(
 
         return
 
+
     kolom_wajib = [
         "Nama",
         "SN",
@@ -832,11 +1422,13 @@ async def hist(
         "CUST ID"
     ]
 
+
     kolom_tidak_ada = [
         kolom
         for kolom in kolom_wajib
         if kolom not in df.columns
     ]
+
 
     if kolom_tidak_ada:
 
@@ -850,10 +1442,12 @@ async def hist(
 
         return
 
+
     hasil = build_hist_result(
         df,
         keyword
     )
+
 
     if hasil.empty:
 
@@ -864,11 +1458,11 @@ async def hist(
 
         return
 
-    # Simpan pencarian agar tombol Kembali
-    # bisa menampilkan hasil yang sama
+
     context.user_data[
         "hist_keyword"
     ] = keyword
+
 
     context.user_data[
         "hist_indexes"
@@ -877,10 +1471,12 @@ async def hist(
         for index in hasil.index
     ]
 
+
     text, reply_markup = build_hist_list_message(
         hasil,
         keyword
     )
+
 
     await update.message.reply_text(
         text,
@@ -910,6 +1506,7 @@ def get_customer_photo(
 
         return None
 
+
     try:
 
         response = requests.get(
@@ -921,10 +1518,12 @@ def get_customer_photo(
             timeout=30
         )
 
+
         print(
             f"[PHOTO API] "
             f"HTTP={response.status_code}"
         )
+
 
         if response.status_code != 200:
 
@@ -935,7 +1534,9 @@ def get_customer_photo(
 
             return None
 
+
         result = response.json()
+
 
         if not result.get(
             "success",
@@ -952,9 +1553,11 @@ def get_customer_photo(
 
             return None
 
+
         image_base64 = result.get(
             "image_base64"
         )
+
 
         if not image_base64:
 
@@ -964,14 +1567,17 @@ def get_customer_photo(
 
             return None
 
+
         image_bytes = base64.b64decode(
             image_base64
         )
+
 
         mime_type = result.get(
             "mime_type",
             "image/jpeg"
         )
+
 
         extension = (
             "jpg"
@@ -983,11 +1589,13 @@ def get_customer_photo(
             "jpg"
         )
 
+
         return (
             image_bytes,
             mime_type,
             extension
         )
+
 
     except Exception as e:
 
@@ -1134,9 +1742,11 @@ async def hist_detail_handler(
 
     row = df.loc[index]
 
+
     caption_detail = build_customer_detail(
         row
     )
+
 
     cust_id = str(
         row.get(
@@ -1250,9 +1860,11 @@ async def hist_detail_handler(
             image_bytes
         )
 
+
         photo_file.name = (
             f"foto_rumah_{cust_id}.{extension}"
         )
+
 
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
@@ -1261,10 +1873,12 @@ async def hist_detail_handler(
             reply_markup=build_hist_back_keyboard()
         )
 
+
         print(
             f"[PHOTO SENT WITH CAPTION] "
             f"CUST ID={cust_id}"
         )
+
 
     except Exception as e:
 
@@ -1272,6 +1886,7 @@ async def hist_detail_handler(
             "Gagal mengirim foto Telegram:",
             e
         )
+
 
         await context.bot.send_message(
             chat_id=query.message.chat_id,
@@ -1329,6 +1944,7 @@ async def hist_back_handler(
         "hist_keyword"
     )
 
+
     if not keyword:
 
         try:
@@ -1381,6 +1997,7 @@ async def hist_back_handler(
         keyword
     )
 
+
     if hasil.empty:
 
         try:
@@ -1420,19 +2037,6 @@ async def hist_back_handler(
 
     # =====================================================
     # HAPUS PESAN FOTO / DETAIL TERLEBIH DAHULU
-    # =====================================================
-    #
-    # Ini bagian penting.
-    #
-    # Pesan detail customer dikirim menggunakan:
-    #
-    #   send_photo()
-    #
-    # sehingga pesan tersebut adalah pesan PHOTO.
-    #
-    # Kita tidak mencoba mengubah foto menjadi pesan teks.
-    # Kita langsung hapus pesan foto tersebut.
-    # Setelah berhasil dihapus, kita kirim list customer baru.
     # =====================================================
 
     try:
@@ -1489,9 +2093,11 @@ async def list_all(
 
     df = get_data()
 
+
     text = (
         "📋 SEMUA DATA ODP\n\n"
     )
+
 
     for _, row in df.iterrows():
 
@@ -1500,6 +2106,7 @@ async def list_all(
             f"{row['RK']} | "
             f"{row['PIU']}\n"
         )
+
 
     await update.message.reply_text(
         text
@@ -1540,6 +2147,7 @@ async def menu(
         ]
 
     ]
+
 
     await update.message.reply_text(
         "Pilih menu:",
@@ -1589,15 +2197,33 @@ async def button_handler(
 
     # =====================================================
     # BUTTON CARI
+    #
+    # HANYA LEVEL 2
     # =====================================================
 
     if query.data == "cari":
 
+        if not is_level2(
+            user.id
+        ):
+
+            await query.edit_message_text(
+                "⛔️ AKSES DITOLAK\n\n"
+                "Menu /cari hanya dapat digunakan "
+                "oleh user Level 2."
+            )
+
+            return
+
+
         await query.edit_message_text(
+            "📍 CARI RK\n\n"
             "Gunakan:\n"
             "/cari <RK>\n\n"
             "Contoh:\n"
-            "/cari GPK0"
+            "/cari GPK0\n\n"
+            "🔐 Jika digunakan dari grup, "
+            "hasil akan dikirim ke private chat Anda."
         )
 
         return
@@ -1639,6 +2265,17 @@ async def button_handler(
 
 # =========================================================
 # ADD USER
+#
+# Sekarang:
+#
+# /adduser <Telegram ID>
+#
+# Default level = 1
+#
+# Untuk menambahkan Level 2:
+#
+# /adduser <Telegram ID> 2
+#
 # =========================================================
 
 async def adduser(
@@ -1647,6 +2284,7 @@ async def adduser(
 ):
 
     user = update.effective_user
+
 
     if not is_owner(
         user.id
@@ -1659,16 +2297,25 @@ async def adduser(
 
         return
 
+
     if not context.args:
 
         await update.message.reply_text(
             "Format:\n\n"
-            "/adduser <Telegram ID>\n\n"
-            "Contoh:\n"
-            "/adduser 392836663"
+            "/adduser <Telegram ID> [level]\n\n"
+            "Default level: 1\n\n"
+            "Contoh user biasa:\n"
+            "/adduser 392836663\n\n"
+            "Contoh user Level 2:\n"
+            "/adduser 392836663 2"
         )
 
         return
+
+
+    # =====================================================
+    # TELEGRAM ID
+    # =====================================================
 
     try:
 
@@ -1684,42 +2331,158 @@ async def adduser(
 
         return
 
-    allowed_users = load_users()
 
-    if new_user_id in allowed_users:
+    # =====================================================
+    # LEVEL
+    # =====================================================
+
+    level = 1
+
+
+    if len(
+        context.args
+    ) >= 2:
+
+        try:
+
+            level = int(
+                context.args[1]
+            )
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ Level harus berupa angka 1 atau 2."
+            )
+
+            return
+
+
+    # =====================================================
+    # VALIDASI LEVEL
+    # =====================================================
+
+    if level not in (
+        1,
+        2
+    ):
 
         await update.message.reply_text(
-            f"ℹ️ User {new_user_id} "
-            f"sudah memiliki akses.",
-            parse_mode="Markdown"
+            "❌ Level hanya boleh 1 atau 2.\n\n"
+            "1 = User biasa\n"
+            "2 = User Level 2"
         )
 
         return
 
-    allowed_users.add(
+
+    # =====================================================
+    # OWNER TIDAK PERLU DITAMBAHKAN
+    # =====================================================
+
+    if new_user_id == int(
+        OWNER_ID
+    ):
+
+        await update.message.reply_text(
+            "ℹ️ User tersebut adalah OWNER dan otomatis Level 2."
+        )
+
+        return
+
+
+    # =====================================================
+    # LOAD USERS
+    # =====================================================
+
+    allowed_users = load_users()
+
+
+    # =====================================================
+    # JIKA SUDAH ADA
+    # =====================================================
+
+    if str(
         new_user_id
-    )
+    ) in allowed_users:
+
+        old_level = allowed_users[
+            str(new_user_id)
+        ]
+
+
+        # Update level
+        allowed_users[
+            str(new_user_id)
+        ] = level
+
+
+        save_users(
+            allowed_users
+        )
+
+
+        await update.message.reply_text(
+            f"✅ LEVEL USER DIPERBARUI\n\n"
+            f"Telegram ID: `{new_user_id}`\n"
+            f"Level lama: `{old_level}`\n"
+            f"Level baru: `{level}`",
+            parse_mode="Markdown"
+        )
+
+
+        print(
+            f"[USER LEVEL UPDATED] "
+            f"ID={new_user_id} "
+            f"Level={old_level}->{level} "
+            f"oleh OWNER={user.id}"
+        )
+
+        return
+
+
+    # =====================================================
+    # TAMBAHKAN USER BARU
+    # =====================================================
+
+    allowed_users[
+        str(new_user_id)
+    ] = level
+
 
     save_users(
         allowed_users
     )
 
+
+    # =====================================================
+    # VERIFY
+    # =====================================================
+
     verify_users = load_users()
 
-    if new_user_id in verify_users:
+
+    if (
+        str(new_user_id)
+        in verify_users
+    ):
 
         await update.message.reply_text(
             f"✅ USER BERHASIL DITAMBAHKAN\n\n"
-            f"Telegram ID: `{new_user_id}`\n\n"
-            f"User sekarang dapat menggunakan bot.",
+            f"Telegram ID: `{new_user_id}`\n"
+            f"Level: `{level}`\n\n"
+            f"Level 2 dapat menggunakan /cari.",
             parse_mode="Markdown"
         )
+
 
         print(
             f"[USER ADDED] "
             f"ID={new_user_id} "
+            f"Level={level} "
             f"oleh OWNER={user.id}"
         )
+
 
     else:
 
@@ -1740,6 +2503,7 @@ async def deluser(
 
     user = update.effective_user
 
+
     if not is_owner(
         user.id
     ):
@@ -1751,6 +2515,7 @@ async def deluser(
 
         return
 
+
     if not context.args:
 
         await update.message.reply_text(
@@ -1761,6 +2526,7 @@ async def deluser(
         )
 
         return
+
 
     try:
 
@@ -1776,6 +2542,7 @@ async def deluser(
 
         return
 
+
     if delete_user_id == int(
         OWNER_ID
     ):
@@ -1786,9 +2553,16 @@ async def deluser(
 
         return
 
+
     allowed_users = load_users()
 
-    if delete_user_id not in allowed_users:
+
+    user_key = str(
+        delete_user_id
+    )
+
+
+    if user_key not in allowed_users:
 
         await update.message.reply_text(
             f"ℹ️ User {delete_user_id} "
@@ -1798,19 +2572,23 @@ async def deluser(
 
         return
 
-    allowed_users.remove(
-        delete_user_id
+
+    allowed_users.pop(
+        user_key
     )
+
 
     save_users(
         allowed_users
     )
+
 
     await update.message.reply_text(
         f"✅ AKSES USER DICABUT\n\n"
         f"Telegram ID: `{delete_user_id}`",
         parse_mode="Markdown"
     )
+
 
     print(
         f"[USER REMOVED] "
@@ -1830,6 +2608,7 @@ async def users(
 
     user = update.effective_user
 
+
     if not is_owner(
         user.id
     ):
@@ -1841,38 +2620,197 @@ async def users(
 
         return
 
+
     allowed_users = load_users()
+
 
     text = (
         "👥 USER YANG MEMILIKI AKSES\n\n"
     )
 
+
     for user_id in sorted(
-        allowed_users
+        allowed_users,
+        key=lambda x: int(x)
     ):
 
-        if user_id == int(
+        level = allowed_users[
+            user_id
+        ]
+
+
+        if int(
+            user_id
+        ) == int(
             OWNER_ID
         ):
 
             text += (
-                f"👑 {user_id} — OWNER\n"
+                f"👑 `{user_id}` — OWNER — Level 2\n"
+            )
+
+        elif level == 2:
+
+            text += (
+                f"⭐ `{user_id}` — Level 2\n"
             )
 
         else:
 
             text += (
-                f"👤 `{user_id}`\n"
+                f"👤 `{user_id}` — Level 1\n"
             )
+
 
     text += (
         f"\nTotal user: "
         f"{len(allowed_users)}"
     )
 
+
     await update.message.reply_text(
         text,
         parse_mode="Markdown"
+    )
+
+
+# =========================================================
+# SET LEVEL
+#
+# Command tambahan:
+#
+# /setlevel <Telegram ID> <level>
+#
+# Contoh:
+#
+# /setlevel 392836663 2
+#
+# =========================================================
+
+async def setlevel(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+
+
+    if not is_owner(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "⛔️ AKSES DITOLAK\n\n"
+            "Hanya owner yang dapat mengubah level user."
+        )
+
+        return
+
+
+    if len(
+        context.args
+    ) < 2:
+
+        await update.message.reply_text(
+            "Format:\n\n"
+            "/setlevel <Telegram ID> <level>\n\n"
+            "Contoh:\n"
+            "/setlevel 392836663 2"
+        )
+
+        return
+
+
+    try:
+
+        target_user_id = int(
+            context.args[0]
+        )
+
+        new_level = int(
+            context.args[1]
+        )
+
+    except ValueError:
+
+        await update.message.reply_text(
+            "❌ Telegram ID dan level harus berupa angka."
+        )
+
+        return
+
+
+    if new_level not in (
+        1,
+        2
+    ):
+
+        await update.message.reply_text(
+            "❌ Level hanya boleh 1 atau 2."
+        )
+
+        return
+
+
+    if target_user_id == int(
+        OWNER_ID
+    ):
+
+        await update.message.reply_text(
+            "ℹ️ Owner selalu Level 2."
+        )
+
+        return
+
+
+    allowed_users = load_users()
+
+
+    target_key = str(
+        target_user_id
+    )
+
+
+    old_level = allowed_users.get(
+        target_key
+    )
+
+
+    if old_level is None:
+
+        await update.message.reply_text(
+            "❌ User tidak ditemukan.\n\n"
+            "Tambahkan terlebih dahulu dengan:\n"
+            "/adduser <Telegram ID> <level>"
+        )
+
+        return
+
+
+    allowed_users[
+        target_key
+    ] = new_level
+
+
+    save_users(
+        allowed_users
+    )
+
+
+    await update.message.reply_text(
+        f"✅ LEVEL BERHASIL DIUBAH\n\n"
+        f"Telegram ID: `{target_user_id}`\n"
+        f"Level lama: `{old_level}`\n"
+        f"Level baru: `{new_level}`",
+        parse_mode="Markdown"
+    )
+
+
+    print(
+        f"[LEVEL CHANGED] "
+        f"ID={target_user_id} "
+        f"{old_level}->{new_level} "
+        f"oleh OWNER={user.id}"
     )
 
 
@@ -1886,25 +2824,31 @@ def main():
         "================================="
     )
 
+
     print(
         "BOT ODP BIZNET"
     )
+
 
     print(
         f"OWNER_ID: {OWNER_ID}"
     )
 
+
     print(
         f"USERS_FILE: {USERS_FILE}"
     )
 
+
     print(
-        f"ALLOWED_USERS: {load_users()}"
+        f"USERS: {load_users()}"
     )
+
 
     print(
         "================================="
     )
+
 
     app = (
         Application
@@ -1925,12 +2869,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "info",
             info
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -1939,12 +2885,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "hist",
             hist
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -1953,12 +2901,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "menu",
             menu
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -1967,12 +2917,14 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "adduser",
             adduser
         )
     )
+
 
     app.add_handler(
         CommandHandler(
@@ -1981,10 +2933,19 @@ def main():
         )
     )
 
+
     app.add_handler(
         CommandHandler(
             "users",
             users
+        )
+    )
+
+
+    app.add_handler(
+        CommandHandler(
+            "setlevel",
+            setlevel
         )
     )
 
@@ -1999,6 +2960,7 @@ def main():
             pattern=r"^hist_detail:"
         )
     )
+
 
     app.add_handler(
         CallbackQueryHandler(
@@ -2025,6 +2987,7 @@ def main():
 
     job_queue = app.job_queue
 
+
     job_queue.run_repeating(
         refresh_data,
         interval=60,
@@ -2039,6 +3002,7 @@ def main():
     print(
         "Bot berjalan 🚀"
     )
+
 
     app.run_polling(
         drop_pending_updates=True
