@@ -2222,8 +2222,6 @@ async def button_handler(
             "/cari <RK>\n\n"
             "Contoh:\n"
             "/cari GPK0\n\n"
-            "🔐 Jika digunakan dari grup, "
-            "hasil akan dikirim ke private chat Anda."
         )
 
         return
