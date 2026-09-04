@@ -56,7 +56,9 @@ CUSTOMER_URL = (
 # =========================================================
 
 PHOTO_API_URL = (
-    "https://script.google.com/macros/s/AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/exec"
+    "https://script.google.com/macros/s/"
+    "AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/"
+    "exec"
 )
 
 
@@ -64,12 +66,12 @@ PHOTO_API_URL = (
 # API KEY
 # =========================================================
 #
-# Tetap langsung di kode.
+# API KEY tetap langsung berada di bot.py.
 #
-# HARUS sama dengan API_KEY pada Apps Script.
+# ISI DENGAN API KEY YANG SAMA DENGAN APPS SCRIPT.
 #
-# Jika API key/token lama sudah terekspos, ganti dengan
-# nilai baru.
+# Jangan masukkan ke Railway Environment Variable jika
+# memang Anda ingin semuanya tetap berada di kode.
 # =========================================================
 
 API_KEY = (
@@ -102,6 +104,7 @@ cached_customer_df = None
 
 # =========================================================
 # USER ACCESS / LEVEL
+# =========================================================
 #
 # Format users.json:
 #
@@ -193,10 +196,6 @@ def load_users():
 
         # -------------------------------------------------
         # FORMAT BARU
-        #
-        # {
-        #   "123456": 2
-        # }
         # -------------------------------------------------
 
         if isinstance(
@@ -237,13 +236,6 @@ def load_users():
 
         # -------------------------------------------------
         # FORMAT LAMA
-        #
-        # [
-        #   123456,
-        #   987654
-        # ]
-        #
-        # Semua user lama dianggap level 1.
         # -------------------------------------------------
 
         elif isinstance(
@@ -313,7 +305,7 @@ def save_users(
         normalized_users = {}
 
         # -------------------------------------------------
-        # Jika menerima dictionary
+        # Dictionary
         # -------------------------------------------------
 
         if isinstance(
@@ -355,7 +347,7 @@ def save_users(
 
 
         # -------------------------------------------------
-        # Support format set/list lama
+        # Format list/set lama
         # -------------------------------------------------
 
         else:
@@ -565,7 +557,8 @@ def access_required(
                 await update.message.reply_text(
                     "⛔️ AKSES DITOLAK\n\n"
                     "Anda belum terdaftar sebagai pengguna bot.\n\n"
-                    "Silakan ketik /myid lalu hubungi owner untuk mendapatkan akses."
+                    "Silakan ketik /myid lalu hubungi owner "
+                    "untuk mendapatkan akses."
                 )
 
             print(
@@ -1430,532 +1423,426 @@ async def hist(
 # GET PHOTO FROM APPS SCRIPT - SYNC
 # =========================================================
 #
-# Fungsi ini sengaja tetap synchronous.
+# PENTING:
 #
-# Nanti dipanggil melalui asyncio.to_thread()
-# sehingga tidak memblokir event loop Telegram.
+# Fungsi ini adalah satu-satunya fungsi synchronous untuk
+# mengambil foto.
+#
+# Apps Script menangani Google Sheets Image in Cell.
+#
+# Python hanya menerima JSON + Base64.
 # =========================================================
 
-def get_customer_photo(cust_id):
+def get_customer_photo_sync(
+    cust_id
+):
 
     if not PHOTO_API_URL:
-        print("[PHOTO] PHOTO_API_URL kosong.")
-        return None
-
-    try:
 
         print(
-            f"[PHOTO] Mencari foto CUST ID={cust_id}"
+            "[PHOTO] PHOTO_API_URL kosong."
         )
+
+        return None
+
+
+    # -----------------------------------------------------
+    # NORMALISASI CUST ID
+    # -----------------------------------------------------
+
+    cust_id = str(
+        cust_id
+    ).strip()
+
+
+    if not cust_id:
+
+        print(
+            "[PHOTO] CUST ID kosong."
+        )
+
+        return None
+
+
+    print(
+        f"[PHOTO] Mencari foto CUST ID={cust_id}"
+    )
+
+
+    # -----------------------------------------------------
+    # REQUEST KE APPS SCRIPT
+    # -----------------------------------------------------
+
+    try:
 
         response = requests.get(
             PHOTO_API_URL,
             params={
-                "cust_id": str(cust_id),
+                "cust_id": cust_id,
                 "api_key": API_KEY
             },
-            timeout=60
+            timeout=90
         )
-
-        print(
-            f"[PHOTO] HTTP={response.status_code}"
-        )
-
-        if response.status_code != 200:
-
-            print(
-                "[PHOTO] HTTP ERROR:",
-                response.text[:1000]
-            )
-
-            return None
-
-        try:
-
-            result = response.json()
-
-        except Exception as e:
-
-            print(
-                "[PHOTO] Response bukan JSON:",
-                e
-            )
-
-            print(
-                response.text[:1000]
-            )
-
-            return None
 
 
         print(
-            "[PHOTO] API RESULT:",
-            {
-                "success": result.get("success"),
-                "has_photo": result.get("has_photo"),
-                "photo_type": result.get("photo_type"),
-                "mime_type": result.get("mime_type"),
-                "row": result.get("row"),
-                "error": result.get("error"),
-                "message": result.get("message")
-            }
+            f"[PHOTO] HTTP STATUS={response.status_code}"
         )
 
 
-        if not result.get("success", False):
+    except requests.exceptions.Timeout:
 
-            print(
-                "[PHOTO] API gagal:",
-                result.get(
-                    "error",
-                    "Unknown error"
-                )
+        print(
+            f"[PHOTO] TIMEOUT CUST ID={cust_id}"
+        )
+
+        return None
+
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            f"[PHOTO] REQUEST ERROR "
+            f"CUST ID={cust_id}: {e}"
+        )
+
+        return None
+
+
+    except Exception as e:
+
+        print(
+            f"[PHOTO] ERROR REQUEST "
+            f"CUST ID={cust_id}: {e}"
+        )
+
+        return None
+
+
+    # -----------------------------------------------------
+    # CEK HTTP STATUS
+    # -----------------------------------------------------
+
+    if response.status_code != 200:
+
+        print(
+            "[PHOTO] HTTP ERROR:",
+            response.text[:2000]
+        )
+
+        return None
+
+
+    # -----------------------------------------------------
+    # PARSE JSON
+    # -----------------------------------------------------
+
+    try:
+
+        result = response.json()
+
+    except Exception as e:
+
+        print(
+            "[PHOTO] Response Apps Script bukan JSON:",
+            e
+        )
+
+        print(
+            "[PHOTO] RESPONSE:",
+            response.text[:2000]
+        )
+
+        return None
+
+
+    # -----------------------------------------------------
+    # DEBUG API
+    # -----------------------------------------------------
+
+    print(
+        "[PHOTO] API RESULT:",
+        {
+            "success": result.get("success"),
+            "has_photo": result.get("has_photo"),
+            "photo_type": result.get("photo_type"),
+            "mime_type": result.get("mime_type"),
+            "row": result.get("row"),
+            "cust_id": result.get("cust_id"),
+            "error": result.get("error"),
+            "message": result.get("message")
+        }
+    )
+
+
+    # -----------------------------------------------------
+    # CEK SUCCESS
+    # -----------------------------------------------------
+
+    if not result.get(
+        "success",
+        False
+    ):
+
+        print(
+            "[PHOTO] API gagal:",
+            result.get(
+                "error",
+                "Unknown error"
             )
+        )
 
-            return None
+        print(
+            "[PHOTO] DETAIL:",
+            result
+        )
+
+        return None
 
 
-        if not result.get(
-            "has_photo",
-            False
-        ):
+    # -----------------------------------------------------
+    # CEK HAS PHOTO
+    # -----------------------------------------------------
 
-            print(
-                "[PHOTO] Customer ditemukan "
-                "tetapi foto tidak tersedia."
+    if not result.get(
+        "has_photo",
+        False
+    ):
+
+        print(
+            f"[PHOTO] Foto tidak tersedia "
+            f"untuk CUST ID={cust_id}"
+        )
+
+        print(
+            "[PHOTO] DETAIL:",
+            result
+        )
+
+        return None
+
+
+    # -----------------------------------------------------
+    # AMBIL BASE64
+    # -----------------------------------------------------
+
+    image_base64 = result.get(
+        "image_base64"
+    )
+
+
+    if not image_base64:
+
+        print(
+            "[PHOTO] has_photo=True "
+            "tetapi image_base64 kosong."
+        )
+
+        print(
+            "[PHOTO] photo_type:",
+            result.get(
+                "photo_type",
+                "-"
             )
+        )
 
-            print(
-                "[PHOTO] DETAIL:",
-                result
+        print(
+            "[PHOTO] mime_type:",
+            result.get(
+                "mime_type",
+                "-"
             )
+        )
 
-            return None
+        return None
 
 
-        image_base64 = result.get(
-            "image_base64"
+    # -----------------------------------------------------
+    # NORMALISASI BASE64
+    # -----------------------------------------------------
+
+    image_base64 = str(
+        image_base64
+    ).strip()
+
+
+    # -----------------------------------------------------
+    # HAPUS PREFIX DATA URL
+    #
+    # Misalnya:
+    #
+    # data:image/jpeg;base64,/9j/4AAQ...
+    # -----------------------------------------------------
+
+    if "," in image_base64:
+
+        prefix, possible_base64 = (
+            image_base64.split(
+                ",",
+                1
+            )
         )
 
 
-        if not image_base64:
+        if "base64" in prefix.lower():
 
-            print(
-                "[PHOTO] has_photo=true "
-                "tetapi image_base64 kosong."
+            image_base64 = (
+                possible_base64.strip()
             )
 
-            return None
+
+    # -----------------------------------------------------
+    # DECODE BASE64
+    # -----------------------------------------------------
+
+    try:
+
+        image_bytes = base64.b64decode(
+            image_base64,
+            validate=True
+        )
+
+    except Exception as e:
+
+        print(
+            "[PHOTO] Base64 tidak valid:",
+            e
+        )
+
+        return None
 
 
-        try:
+    # -----------------------------------------------------
+    # CEK IMAGE BYTES
+    # -----------------------------------------------------
 
-            image_bytes = base64.b64decode(
-                image_base64,
-                validate=True
-            )
+    if not image_bytes:
 
-        except Exception as e:
+        print(
+            "[PHOTO] Image bytes kosong."
+        )
 
-            print(
-                "[PHOTO] Base64 tidak valid:",
-                e
-            )
-
-            return None
+        return None
 
 
-        if not image_bytes:
-
-            print(
-                "[PHOTO] Image bytes kosong."
-            )
-
-            return None
+    image_size = len(
+        image_bytes
+    )
 
 
-        mime_type = result.get(
+    print(
+        "[PHOTO] Image berhasil diterima:"
+        f" {image_size / 1024:.2f} KB"
+    )
+
+
+    # -----------------------------------------------------
+    # BATAS UKURAN
+    # -----------------------------------------------------
+
+    MAX_PHOTO_SIZE = (
+        9 * 1024 * 1024
+    )
+
+
+    if image_size > MAX_PHOTO_SIZE:
+
+        print(
+            "[PHOTO] Foto terlalu besar:"
+            f" {image_size / 1024 / 1024:.2f} MB"
+        )
+
+        return None
+
+
+    # -----------------------------------------------------
+    # MIME TYPE
+    # -----------------------------------------------------
+
+    mime_type = str(
+        result.get(
             "mime_type",
+            "image/jpeg"
+        )
+    ).lower().strip()
+
+
+    allowed_mime_types = {
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/gif"
+    }
+
+
+    if mime_type not in allowed_mime_types:
+
+        print(
+            "[PHOTO] MIME tidak dikenal:",
+            mime_type
+        )
+
+        mime_type = (
             "image/jpeg"
         )
 
 
-        if mime_type == "image/png":
+    # -----------------------------------------------------
+    # EXTENSION
+    # -----------------------------------------------------
 
-            extension = "png"
+    if mime_type in (
+        "image/jpeg",
+        "image/jpg"
+    ):
 
-        elif mime_type == "image/webp":
+        extension = "jpg"
 
-            extension = "webp"
+    elif mime_type == "image/png":
 
-        elif mime_type == "image/gif":
+        extension = "png"
 
-            extension = "gif"
+    elif mime_type == "image/webp":
 
-        else:
+        extension = "webp"
 
-            extension = "jpg"
+    elif mime_type == "image/gif":
 
+        extension = "gif"
 
-        print(
-            f"[PHOTO] BERHASIL: "
-            f"{len(image_bytes)} bytes "
-            f"| MIME={mime_type}"
-        )
+    else:
 
+        extension = "jpg"
 
-        return (
-            image_bytes,
-            mime_type,
-            extension
-        )
 
+    # -----------------------------------------------------
+    # BERHASIL
+    # -----------------------------------------------------
 
-    except requests.exceptions.Timeout:
+    print(
+        f"[PHOTO] BERHASIL mengambil foto "
+        f"CUST ID={cust_id} "
+        f"| SIZE={image_size / 1024:.2f} KB "
+        f"| MIME={mime_type}"
+    )
 
-        print(
-            "[PHOTO] Timeout saat mengambil foto dari Apps Script."
-        )
 
-        return None
-
-
-    except requests.exceptions.RequestException as e:
-
-        print(
-            "[PHOTO] Request error:",
-            e
-        )
-
-        return None
-
-
-    except Exception as e:
-
-        print(
-            "[PHOTO] Error:",
-            e
-        )
-
-        return None
-        # -------------------------------------------------
-        # Parse JSON
-        # -------------------------------------------------
-
-        try:
-
-            result = response.json()
-
-        except Exception as e:
-
-            print(
-                "[PHOTO API] Response bukan JSON:",
-                e
-            )
-
-            print(
-                "[PHOTO API] Response:",
-                response.text[:500]
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # CEK SUCCESS
-        # -------------------------------------------------
-
-        if not result.get(
-            "success",
-            False
-        ):
-
-            print(
-                "[PHOTO API] API gagal:",
-                result.get(
-                    "error",
-                    "Unknown error"
-                )
-            )
-
-            print(
-                "[PHOTO API] Message:",
-                result.get(
-                    "message",
-                    "-"
-                )
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # CEK HAS PHOTO
-        # -------------------------------------------------
-
-        has_photo = result.get(
-            "has_photo",
-            False
-        )
-
-
-        if not has_photo:
-
-            print(
-                f"[PHOTO API] "
-                f"Foto tidak tersedia untuk CUST ID={cust_id}"
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # BASE64
-        # -------------------------------------------------
-
-        image_base64 = result.get(
-            "image_base64"
-        )
-
-
-        if not image_base64:
-
-            print(
-                "[PHOTO API] image_base64 kosong."
-            )
-
-            print(
-                "[PHOTO API] photo_type:",
-                result.get(
-                    "photo_type",
-                    "-"
-                )
-            )
-
-            print(
-                "[PHOTO API] foto_value:",
-                result.get(
-                    "foto_value",
-                    "-"
-                )
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # Bersihkan prefix data URL jika ada
-        #
-        # Contoh:
-        #
-        # data:image/jpeg;base64,/9j/4AAQ...
-        #
-        # -------------------------------------------------
-
-        if "," in image_base64:
-
-            prefix, possible_base64 = (
-                image_base64.split(
-                    ",",
-                    1
-                )
-            )
-
-            if (
-                "base64"
-                in prefix.lower()
-            ):
-
-                image_base64 = (
-                    possible_base64
-                )
-
-
-        # -------------------------------------------------
-        # Decode base64
-        # -------------------------------------------------
-
-        try:
-
-            image_bytes = (
-                base64.b64decode(
-                    image_base64,
-                    validate=True
-                )
-            )
-
-        except Exception as e:
-
-            print(
-                "[PHOTO API] Base64 tidak valid:",
-                e
-            )
-
-            return None
-
-
-        if not image_bytes:
-
-            print(
-                "[PHOTO API] Image bytes kosong."
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # Ukuran file
-        # -------------------------------------------------
-
-        image_size = len(
-            image_bytes
-        )
-
-
-        print(
-            f"[PHOTO API] "
-            f"Foto berhasil di-download. "
-            f"Size={image_size / 1024:.2f} KB"
-        )
-
-
-        # -------------------------------------------------
-        # Telegram memiliki batas ukuran file.
-        #
-        # Kita gunakan batas aman 9 MB untuk send_photo.
-        # -------------------------------------------------
-
-        MAX_PHOTO_SIZE = (
-            9 * 1024 * 1024
-        )
-
-
-        if image_size > MAX_PHOTO_SIZE:
-
-            print(
-                "[PHOTO API] "
-                f"Foto terlalu besar: "
-                f"{image_size / 1024 / 1024:.2f} MB"
-            )
-
-            return None
-
-
-        # -------------------------------------------------
-        # MIME TYPE
-        # -------------------------------------------------
-
-        mime_type = str(
-            result.get(
-                "mime_type",
-                "image/jpeg"
-            )
-        ).lower().strip()
-
-
-        allowed_mime_types = {
-            "image/jpeg",
-            "image/jpg",
-            "image/png",
-            "image/webp",
-            "image/gif"
-        }
-
-
-        if mime_type not in allowed_mime_types:
-
-            print(
-                f"[PHOTO API] MIME type tidak dikenal: "
-                f"{mime_type}"
-            )
-
-            mime_type = (
-                "image/jpeg"
-            )
-
-
-        # -------------------------------------------------
-        # Extension
-        # -------------------------------------------------
-
-        if mime_type in (
-            "image/jpeg",
-            "image/jpg"
-        ):
-
-            extension = "jpg"
-
-        elif mime_type == "image/png":
-
-            extension = "png"
-
-        elif mime_type == "image/webp":
-
-            extension = "webp"
-
-        elif mime_type == "image/gif":
-
-            extension = "gif"
-
-        else:
-
-            extension = "jpg"
-
-
-        # -------------------------------------------------
-        # Return
-        # -------------------------------------------------
-
-        return (
-            image_bytes,
-            mime_type,
-            extension
-        )
-
-
-    except requests.exceptions.Timeout:
-
-        print(
-            f"[PHOTO API] Timeout mengambil foto "
-            f"CUST ID={cust_id}"
-        )
-
-        return None
-
-
-    except requests.exceptions.RequestException as e:
-
-        print(
-            f"[PHOTO API] Request error "
-            f"CUST ID={cust_id}:",
-            e
-        )
-
-        return None
-
-
-    except Exception as e:
-
-        print(
-            f"[PHOTO API] Error "
-            f"CUST ID={cust_id}:",
-            e
-        )
-
-        return None
+    return (
+        image_bytes,
+        mime_type,
+        extension
+    )
 
 
 # =========================================================
 # GET PHOTO FROM APPS SCRIPT - ASYNC
 # =========================================================
 #
-# INI BAGIAN PENTING.
+# Jangan gunakan requests.get() langsung di async handler.
 #
-# requests.get() tidak dijalankan langsung dalam async
-# handler.
-#
-# asyncio.to_thread() membuat proses HTTP berjalan
-# di thread sehingga bot tetap responsif.
+# asyncio.to_thread() membuat request berjalan di thread.
+# Telegram bot tidak akan stuck selama Apps Script bekerja.
 # =========================================================
 
 async def get_customer_photo(
@@ -2081,7 +1968,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # AMBIL DATA
+    # AMBIL DATA CUSTOMER
     # =====================================================
 
     try:
@@ -2118,10 +2005,18 @@ async def hist_detail_handler(
     row = df.loc[index]
 
 
+    # =====================================================
+    # DETAIL CUSTOMER
+    # =====================================================
+
     caption_detail = build_customer_detail(
         row
     )
 
+
+    # =====================================================
+    # CUST ID
+    # =====================================================
 
     cust_id = str(
         row.get(
@@ -2132,7 +2027,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # HAPUS PESAN MENU PILIHAN LAMA
+    # HAPUS PESAN LIST LAMA
     # =====================================================
 
     try:
@@ -2171,7 +2066,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # NOTIFIKASI SEMENTARA
+    # NOTIFIKASI LOADING
     # =====================================================
 
     loading_msg = None
@@ -2198,17 +2093,41 @@ async def hist_detail_handler(
 
     # =====================================================
     # AMBIL FOTO
-    #
-    # Sekarang TIDAK memblokir event loop Telegram.
     # =====================================================
 
-    photo_result = await get_customer_photo(
-        cust_id
-    )
+    try:
+
+        photo_result = await asyncio.wait_for(
+            get_customer_photo(
+                cust_id
+            ),
+            timeout=120
+        )
+
+    except asyncio.TimeoutError:
+
+        print(
+            f"[HIST DETAIL] "
+            f"Timeout total mengambil foto "
+            f"CUST ID={cust_id}"
+        )
+
+        photo_result = None
+
+    except Exception as e:
+
+        print(
+            f"[HIST DETAIL] "
+            f"Error mengambil foto "
+            f"CUST ID={cust_id}:",
+            repr(e)
+        )
+
+        photo_result = None
 
 
     # =====================================================
-    # HAPUS PESAN STATUS PENCARIAN
+    # HAPUS LOADING
     # =====================================================
 
     if loading_msg:
@@ -2240,6 +2159,10 @@ async def hist_detail_handler(
 
         return
 
+
+    # =====================================================
+    # HASIL FOTO
+    # =====================================================
 
     image_bytes, mime_type, extension = (
         photo_result
@@ -2290,8 +2213,7 @@ async def hist_detail_handler(
 
 
         # -------------------------------------------------
-        # Fallback:
-        # Jika send_photo gagal, coba kirim sebagai document.
+        # FALLBACK DOCUMENT
         # -------------------------------------------------
 
         try:
@@ -2339,7 +2261,8 @@ async def hist_detail_handler(
                 chat_id=query.message.chat_id,
                 text=(
                     f"{caption_detail}\n"
-                    "❌ Foto ditemukan, tetapi gagal dikirim ke Telegram.\n\n"
+                    "❌ Foto ditemukan, tetapi gagal dikirim "
+                    "ke Telegram.\n\n"
                     f"Error: {str(e)[:300]}"
                 ),
                 reply_markup=build_hist_back_keyboard()
@@ -3249,46 +3172,42 @@ def main():
         "================================="
     )
 
-
     print(
         "BOT ODP BIZNET"
     )
-
 
     print(
         f"OWNER_ID: {OWNER_ID}"
     )
 
-
     print(
         f"USERS_FILE: {USERS_FILE}"
     )
-
 
     print(
         f"USERS: {load_users()}"
     )
 
-
     print(
         "PHOTO API: AKTIF"
     )
-
 
     print(
         "PHOTO MODE: GOOGLE SHEET IMAGE IN CELL"
     )
 
-
     print(
         "ASYNC PHOTO REQUEST: AKTIF"
     )
-
 
     print(
         "================================="
     )
 
+
+    # =====================================================
+    # BUILD APPLICATION
+    # =====================================================
 
     app = (
         Application
