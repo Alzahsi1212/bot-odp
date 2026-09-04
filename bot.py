@@ -281,7 +281,7 @@ def access_required(func):
                 await update.message.reply_text(
                     "⛔️ AKSES DITOLAK\n\n"
                     "Anda belum terdaftar sebagai pengguna bot.\n\n"
-                    "Silakan hubungi owner untuk mendapatkan akses."
+                    "Silakan ketik /myid lalu hubungi owner untuk mendapatkan akses."
                 )
 
             print(
@@ -1154,11 +1154,16 @@ async def hist_detail_handler(
 
         await query.delete_message()
 
+        print(
+            "[HIST DETAIL] "
+            "Pesan list customer berhasil dihapus."
+        )
+
     except Exception as e:
 
         print(
-            "Gagal menghapus pesan lama:",
-            e
+            "[HIST DETAIL] "
+            f"Gagal menghapus pesan list lama: {e}"
         )
 
 
@@ -1328,7 +1333,7 @@ async def hist_back_handler(
 
         try:
 
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "❌ Pencarian sebelumnya sudah tidak tersedia."
             )
 
@@ -1356,7 +1361,7 @@ async def hist_back_handler(
 
         try:
 
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "❌ Gagal membaca data customer."
             )
 
@@ -1380,7 +1385,7 @@ async def hist_back_handler(
 
         try:
 
-            await query.edit_message_text(
+            await query.message.reply_text(
                 "❌ Data customer sudah tidak ditemukan."
             )
 
@@ -1414,61 +1419,42 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # PESAN DARI DETAIL BISA BERUPA FOTO
+    # HAPUS PESAN FOTO / DETAIL TERLEBIH DAHULU
     # =====================================================
     #
-    # Karena pesan detail bisa berupa photo message,
-    # edit_message_text tidak selalu bisa digunakan.
+    # Ini bagian penting.
     #
-    # Kita coba edit caption terlebih dahulu.
-    # Jika gagal, kirim pesan list baru.
+    # Pesan detail customer dikirim menggunakan:
+    #
+    #   send_photo()
+    #
+    # sehingga pesan tersebut adalah pesan PHOTO.
+    #
+    # Kita tidak mencoba mengubah foto menjadi pesan teks.
+    # Kita langsung hapus pesan foto tersebut.
+    # Setelah berhasil dihapus, kita kirim list customer baru.
     # =====================================================
 
     try:
 
-        if query.message and query.message.photo:
+        await query.message.delete()
 
-            await query.edit_message_caption(
-                caption=text,
-                reply_markup=reply_markup
-            )
-
-        else:
-
-            await query.edit_message_text(
-                text,
-                reply_markup=reply_markup
-            )
-
-        return
+        print(
+            "[HIST BACK] "
+            "Foto/detail customer berhasil dihapus."
+        )
 
     except Exception as e:
 
         print(
-            "Gagal mengubah pesan detail menjadi list:",
-            e
+            "[HIST BACK] "
+            f"Gagal menghapus foto/detail customer: {e}"
         )
 
 
     # =====================================================
-    # FALLBACK
+    # KIRIM ULANG LIST CUSTOMER
     # =====================================================
-    #
-    # Jika pesan foto tidak bisa diubah menjadi list,
-    # hapus pesan detail lalu kirim list baru.
-    # =====================================================
-
-    try:
-
-        await query.delete_message()
-
-    except Exception as e:
-
-        print(
-            "Gagal menghapus pesan detail:",
-            e
-        )
-
 
     try:
 
@@ -1478,11 +1464,16 @@ async def hist_back_handler(
             reply_markup=reply_markup
         )
 
+        print(
+            "[HIST BACK] "
+            "List customer berhasil dikirim ulang."
+        )
+
     except Exception as e:
 
         print(
-            "Gagal mengirim kembali list customer:",
-            e
+            "[HIST BACK] "
+            f"Gagal mengirim list customer: {e}"
         )
 
 
