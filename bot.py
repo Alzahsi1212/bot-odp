@@ -24,11 +24,6 @@ from config import TOKEN, OWNER_ID
 
 
 # =========================================================
-# KONFIGURASI
-# =========================================================
-
-
-# =========================================================
 # GOOGLE SHEET 1 - DATA ODP
 # =========================================================
 
@@ -55,21 +50,28 @@ CUSTOMER_URL = (
 # =========================================================
 
 PHOTO_API_URL = (
-    "https://script.google.com/macros/s/AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/exec"
+    "https://script.google.com/macros/s/"
+    "AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/"
+    "exec"
 )
 
 
 # =========================================================
 # API KEY
 # =========================================================
+# PENTING:
+# Gunakan API KEY Anda yang sekarang.
+# Nilainya HARUS sama dengan API_KEY di Apps Script.
+#
+# Saya sengaja tidak menuliskan ulang credential rahasia
+# yang sudah Anda kirim sebelumnya.
+# =========================================================
 
-API_KEY = (
-    "8962683694:AAHdUNfswp0hRAYyoBnfcsS3d8NKvdd9yzs"
-)
+API_KEY = "8962683694:AAHdUNfswp0hRAYyoBnfcsS3d8NKvdd9yzs"
 
 
 # =========================================================
-# LOKASI USERS.JSON
+# USERS.JSON
 # =========================================================
 
 BASE_DIR = os.path.dirname(
@@ -83,40 +85,23 @@ USERS_FILE = os.path.join(
 
 
 # =========================================================
-# CACHE DATA
+# CACHE
 # =========================================================
 
 cached_df = None
-
 cached_customer_df = None
 
 
 # =========================================================
-# USER ACCESS / LEVEL
-#
-# Format users.json:
-#
-# {
-#     "123456789": 2,
-#     "987654321": 1
-# }
-#
-# Level:
-#
-# 0 = tidak memiliki akses
-# 1 = user biasa
-# 2 = user level 2
-#
-# Owner selalu level 2.
+# LOAD USERS
 # =========================================================
-
 
 def load_users():
 
     users = {}
 
     # -----------------------------------------------------
-    # Owner selalu level 2
+    # OWNER SELALU LEVEL 2
     # -----------------------------------------------------
 
     try:
@@ -138,7 +123,7 @@ def load_users():
 
 
     # -----------------------------------------------------
-    # Jika users.json belum ada
+    # BUAT USERS.JSON JIKA BELUM ADA
     # -----------------------------------------------------
 
     if not os.path.exists(
@@ -166,7 +151,7 @@ def load_users():
 
 
     # -----------------------------------------------------
-    # Baca users.json
+    # BACA USERS.JSON
     # -----------------------------------------------------
 
     try:
@@ -183,11 +168,7 @@ def load_users():
 
 
         # -------------------------------------------------
-        # FORMAT BARU
-        #
-        # {
-        #   "123456": 2
-        # }
+        # FORMAT DICTIONARY
         # -------------------------------------------------
 
         if isinstance(
@@ -207,7 +188,6 @@ def load_users():
                         level
                     )
 
-                    # Pastikan level valid
                     if level < 1:
                         level = 1
 
@@ -228,14 +208,7 @@ def load_users():
 
 
         # -------------------------------------------------
-        # FORMAT LAMA
-        #
-        # [
-        #   123456,
-        #   987654
-        # ]
-        #
-        # Semua user lama dianggap level 1.
+        # FORMAT LAMA LIST
         # -------------------------------------------------
 
         elif isinstance(
@@ -272,7 +245,7 @@ def load_users():
 
 
     # -----------------------------------------------------
-    # Owner selalu level 2
+    # OWNER SELALU LEVEL 2
     # -----------------------------------------------------
 
     try:
@@ -296,16 +269,15 @@ def load_users():
 # SAVE USERS
 # =========================================================
 
-def save_users(
-    users
-):
+def save_users(users):
 
     try:
 
         normalized_users = {}
 
+
         # -------------------------------------------------
-        # Jika menerima dictionary
+        # DICTIONARY
         # -------------------------------------------------
 
         if isinstance(
@@ -341,13 +313,12 @@ def save_users(
                 ):
 
                     print(
-                        f"User tidak valid: "
-                        f"{user_id}"
+                        f"User tidak valid: {user_id}"
                     )
 
 
         # -------------------------------------------------
-        # Support format set/list lama
+        # LIST / SET FORMAT LAMA
         # -------------------------------------------------
 
         else:
@@ -366,13 +337,12 @@ def save_users(
                 ):
 
                     print(
-                        f"User tidak valid: "
-                        f"{user_id}"
+                        f"User tidak valid: {user_id}"
                     )
 
 
         # -------------------------------------------------
-        # Owner selalu level 2
+        # OWNER SELALU LEVEL 2
         # -------------------------------------------------
 
         normalized_users[
@@ -381,7 +351,7 @@ def save_users(
 
 
         # -------------------------------------------------
-        # Simpan
+        # SIMPAN
         # -------------------------------------------------
 
         with open(
@@ -415,9 +385,7 @@ def save_users(
 # GET USER LEVEL
 # =========================================================
 
-def get_user_level(
-    user_id
-):
+def get_user_level(user_id):
 
     try:
 
@@ -434,7 +402,7 @@ def get_user_level(
 
 
     # -----------------------------------------------------
-    # Owner selalu level 2
+    # OWNER
     # -----------------------------------------------------
 
     try:
@@ -467,9 +435,7 @@ def get_user_level(
 # IS ALLOWED
 # =========================================================
 
-def is_allowed(
-    user_id
-):
+def is_allowed(user_id):
 
     return (
         get_user_level(
@@ -482,9 +448,7 @@ def is_allowed(
 # IS LEVEL 2
 # =========================================================
 
-def is_level2(
-    user_id
-):
+def is_level2(user_id):
 
     return (
         get_user_level(
@@ -497,9 +461,7 @@ def is_level2(
 # IS OWNER
 # =========================================================
 
-def is_owner(
-    user_id
-):
+def is_owner(user_id):
 
     try:
 
@@ -521,9 +483,7 @@ def is_owner(
 # ACCESS DECORATOR
 # =========================================================
 
-def access_required(
-    func
-):
+def access_required(func):
 
     @wraps(func)
     async def wrapper(
@@ -557,22 +517,11 @@ def access_required(
                 await update.message.reply_text(
                     "⛔️ AKSES DITOLAK\n\n"
                     "Anda belum terdaftar sebagai pengguna bot.\n\n"
-                    "Silakan ketik /myid lalu hubungi owner untuk mendapatkan akses."
+                    "Silakan ketik /myid lalu hubungi owner "
+                    "untuk mendapatkan akses."
                 )
 
-            print(
-                f"[ACCESS DENIED] "
-                f"ID={user.id}"
-            )
-
             return
-
-
-        print(
-            f"[ACCESS GRANTED] "
-            f"ID={user.id} "
-            f"Level={level}"
-        )
 
 
         return await func(
@@ -586,13 +535,9 @@ def access_required(
 
 # =========================================================
 # LEVEL 2 DECORATOR
-#
-# Digunakan khusus untuk /cari
 # =========================================================
 
-def level2_required(
-    func
-):
+def level2_required(func):
 
     @wraps(func)
     async def wrapper(
@@ -629,18 +574,7 @@ def level2_required(
                     "oleh user Level 2."
                 )
 
-            print(
-                f"[LEVEL 2 DENIED] "
-                f"ID={user.id}"
-            )
-
             return
-
-
-        print(
-            f"[LEVEL 2 GRANTED] "
-            f"ID={user.id}"
-        )
 
 
         return await func(
@@ -656,9 +590,7 @@ def level2_required(
 # NORMALIZE
 # =========================================================
 
-def normalize(
-    text
-):
+def normalize(text):
 
     return str(
         text
@@ -698,6 +630,9 @@ def get_data():
             }
         )
 
+        cached_df = cached_df.fillna("")
+
+
     return cached_df
 
 
@@ -716,6 +651,7 @@ def get_customer_data():
             dtype=str
         ).fillna("")
 
+
     return cached_customer_df
 
 
@@ -731,9 +667,9 @@ def refresh_data(
     global cached_customer_df
 
 
-    # =====================================================
-    # REFRESH DATA ODP
-    # =====================================================
+    # -----------------------------------------------------
+    # REFRESH ODP
+    # -----------------------------------------------------
 
     try:
 
@@ -758,7 +694,8 @@ def refresh_data(
                 "Port15": str,
                 "Port16": str
             }
-        )
+        ).fillna("")
+
 
         print(
             "Data ODP berhasil di-refresh"
@@ -772,9 +709,9 @@ def refresh_data(
         )
 
 
-    # =====================================================
+    # -----------------------------------------------------
     # REFRESH CUSTOMER
-    # =====================================================
+    # -----------------------------------------------------
 
     try:
 
@@ -782,6 +719,7 @@ def refresh_data(
             CUSTOMER_URL,
             dtype=str
         ).fillna("")
+
 
         print(
             "Data Customer berhasil di-refresh"
@@ -809,10 +747,12 @@ async def myid(
     if not user:
         return
 
+
     await update.message.reply_text(
         f"🆔 TELEGRAM ID ANDA\n\n"
         f"ID: `{user.id}`\n\n"
-        f"Username: @{user.username if user.username else '-'}",
+        f"Username: "
+        f"@{user.username if user.username else '-'}",
         parse_mode="Markdown"
     )
 
@@ -891,28 +831,28 @@ async def info(
     pesan = f"""
 📌 INFO ODP
 
-Nama ODP : {row['Nama ODP']}
-RK       : {row['RK']}
-IP OLT   : {row['IP OLT']}
-PIU      : {row['PIU']}
-Lokasi   : {row['Lokasi']}
+Nama ODP : {row.get('Nama ODP', '-')}
+RK       : {row.get('RK', '-')}
+IP OLT   : {row.get('IP OLT', '-')}
+PIU      : {row.get('PIU', '-')}
+Lokasi   : {row.get('Lokasi', '-')}
 
-Port1    : {row['Port1']}
-Port2    : {row['Port2']}
-Port3    : {row['Port3']}
-Port4    : {row['Port4']}
-Port5    : {row['Port5']}
-Port6    : {row['Port6']}
-Port7    : {row['Port7']}
-Port8    : {row['Port8']}
-Port9    : {row['Port9']}
-Port10   : {row['Port10']}
-Port11   : {row['Port11']}
-Port12   : {row['Port12']}
-Port13   : {row['Port13']}
-Port14   : {row['Port14']}
-Port15   : {row['Port15']}
-Port16   : {row['Port16']}
+Port1    : {row.get('Port1', '-')}
+Port2    : {row.get('Port2', '-')}
+Port3    : {row.get('Port3', '-')}
+Port4    : {row.get('Port4', '-')}
+Port5    : {row.get('Port5', '-')}
+Port6    : {row.get('Port6', '-')}
+Port7    : {row.get('Port7', '-')}
+Port8    : {row.get('Port8', '-')}
+Port9    : {row.get('Port9', '-')}
+Port10   : {row.get('Port10', '-')}
+Port11   : {row.get('Port11', '-')}
+Port12   : {row.get('Port12', '-')}
+Port13   : {row.get('Port13', '-')}
+Port14   : {row.get('Port14', '-')}
+Port15   : {row.get('Port15', '-')}
+Port16   : {row.get('Port16', '-')}
 """
 
 
@@ -950,11 +890,14 @@ def build_cari_message(
     rk
 ):
 
+    first = hasil.iloc[0]
+
+
     text = (
         f"📍 LIST ODP RK {rk.upper()}\n\n"
-        f"PIN      : {hasil.iloc[0].get('PIN', '-')}\n"
-        f"Backbone : {hasil.iloc[0].get('Backbone', '-')}\n"
-        f"Tikor    : {hasil.iloc[0].get('Tikor', '-')}\n\n"
+        f"PIN      : {first.get('PIN', '-')}\n"
+        f"Backbone : {first.get('Backbone', '-')}\n"
+        f"Tikor    : {first.get('Tikor', '-')}\n\n"
         f"Daftar ODP:\n"
     )
 
@@ -973,18 +916,6 @@ def build_cari_message(
 
 # =========================================================
 # CARI RK
-#
-# KHUSUS LEVEL 2
-#
-# Jika dari GROUP:
-# hasil TIDAK dikirim ke group.
-#
-# Bot hanya mengirim:
-#
-# 🔐 Hasil pencarian dikirim ke private chat Anda.
-#
-# Kemudian hasil dikirim ke private chat user.
-#
 # =========================================================
 
 @level2_required
@@ -994,16 +925,11 @@ async def cari(
 ):
 
     user = update.effective_user
-
     message = update.message
 
     if not user or not message:
         return
 
-
-    # =====================================================
-    # CEK ARGUMENT
-    # =====================================================
 
     if not context.args:
 
@@ -1027,10 +953,6 @@ async def cari(
         return
 
 
-    # =====================================================
-    # AMBIL DATA
-    # =====================================================
-
     try:
 
         df = get_data()
@@ -1049,22 +971,11 @@ async def cari(
         return
 
 
-    # =====================================================
-    # CARI RK
-    # =====================================================
-
     hasil = build_cari_result(
         df,
         rk
     )
 
-
-    # =====================================================
-    # RK TIDAK DITEMUKAN
-    #
-    # Pesan ini aman dikirim ke group karena
-    # tidak mengandung data hasil pencarian.
-    # =====================================================
 
     if hasil.empty:
 
@@ -1075,19 +986,11 @@ async def cari(
         return
 
 
-    # =====================================================
-    # BUAT HASIL
-    # =====================================================
-
     text = build_cari_message(
         hasil,
         rk
     )
 
-
-    # =====================================================
-    # CEK APAKAH COMMAND DARI GROUP
-    # =====================================================
 
     chat = update.effective_chat
 
@@ -1099,12 +1002,6 @@ async def cari(
         chat.type == "private"
     )
 
-
-    # =====================================================
-    # JIKA COMMAND DARI PRIVATE CHAT
-    #
-    # Hasil langsung ditampilkan.
-    # =====================================================
 
     if is_private:
 
@@ -1122,13 +1019,9 @@ async def cari(
         return
 
 
-    # =====================================================
-    # JIKA COMMAND DARI GROUP
-    #
-    # JANGAN KIRIM HASIL KE GROUP.
-    #
-    # Kirim notifikasi terlebih dahulu.
-    # =====================================================
+    # -----------------------------------------------------
+    # NOTIFIKASI GROUP
+    # -----------------------------------------------------
 
     try:
 
@@ -1139,16 +1032,14 @@ async def cari(
     except Exception as e:
 
         print(
-            "[CARI] Gagal mengirim notifikasi ke group:",
+            "[CARI] Gagal mengirim notifikasi:",
             e
         )
 
 
-    # =====================================================
-    # KIRIM HASIL KE PRIVATE CHAT
-    #
-    # chat_id user = user.id
-    # =====================================================
+    # -----------------------------------------------------
+    # KIRIM KE PRIVATE
+    # -----------------------------------------------------
 
     try:
 
@@ -1160,40 +1051,32 @@ async def cari(
 
         print(
             f"[CARI] "
-            f"Hasil RK={rk} "
-            f"berhasil dikirim ke private chat "
-            f"User={user.id}"
+            f"Hasil RK={rk} berhasil dikirim "
+            f"ke private chat User={user.id}"
         )
 
 
     except Exception as e:
 
         print(
-            f"[CARI] "
-            f"Gagal mengirim private message "
-            f"User={user.id}:",
-            e
+            f"[CARI] Gagal mengirim private message "
+            f"User={user.id}: {e}"
         )
 
-
-        # -------------------------------------------------
-        # Gagal biasanya karena user belum pernah
-        # membuka private chat / belum /start bot.
-        # -------------------------------------------------
 
         try:
 
             await message.reply_text(
                 "⚠️ Saya tidak dapat mengirim hasil ke private chat Anda.\n\n"
-                "Silakan buka private chat bot ini lalu tekan /start.\n"
+                "Silakan buka private chat bot ini lalu "
+                "tekan /start.\n"
                 "Setelah itu ulangi /cari <RK> di grup."
             )
 
         except Exception as notify_error:
 
             print(
-                "[CARI] "
-                "Gagal mengirim pesan error ke group:",
+                "[CARI] Gagal mengirim error:",
                 notify_error
             )
 
@@ -1452,7 +1335,7 @@ async def hist(
     if hasil.empty:
 
         await update.message.reply_text(
-            f"❌ DATA CUSTOMER TIDAK DITEMUKAN\n\n"
+            "❌ DATA CUSTOMER TIDAK DITEMUKAN\n\n"
             f"Pencarian: {keyword}"
         )
 
@@ -1472,9 +1355,11 @@ async def hist(
     ]
 
 
-    text, reply_markup = build_hist_list_message(
-        hasil,
-        keyword
+    text, reply_markup = (
+        build_hist_list_message(
+            hasil,
+            keyword
+        )
     )
 
 
@@ -1485,7 +1370,7 @@ async def hist(
 
 
 # =========================================================
-# GET PHOTO FROM APPS SCRIPT
+# GET CUSTOMER PHOTO
 # =========================================================
 
 def get_customer_photo(
@@ -1507,15 +1392,38 @@ def get_customer_photo(
         return None
 
 
+    if (
+        not API_KEY
+        or
+        API_KEY.startswith(
+            "ISI_DENGAN"
+        )
+    ):
+
+        print(
+            "API_KEY belum dikonfigurasi."
+        )
+
+        return None
+
+
     try:
+
+        print(
+            f"[PHOTO API] "
+            f"Mencari CUST ID={cust_id}"
+        )
+
 
         response = requests.get(
             PHOTO_API_URL,
             params={
-                "cust_id": str(cust_id),
+                "cust_id": str(
+                    cust_id
+                ),
                 "api_key": API_KEY
             },
-            timeout=30
+            timeout=60
         )
 
 
@@ -1528,14 +1436,35 @@ def get_customer_photo(
         if response.status_code != 200:
 
             print(
-                "PHOTO API error:",
-                response.text[:500]
+                "[PHOTO API] Response:",
+                response.text[:1000]
             )
 
             return None
 
 
-        result = response.json()
+        try:
+
+            result = response.json()
+
+        except Exception as e:
+
+            print(
+                "[PHOTO API] "
+                f"JSON tidak valid: {e}"
+            )
+
+            print(
+                response.text[:1000]
+            )
+
+            return None
+
+
+        print(
+            "[PHOTO API] "
+            f"success={result.get('success')}"
+        )
 
 
         if not result.get(
@@ -1544,11 +1473,34 @@ def get_customer_photo(
         ):
 
             print(
-                "PHOTO API gagal:",
-                result.get(
-                    "error",
-                    "Unknown error"
-                )
+                "[PHOTO API] "
+                f"Error={result.get('error', 'Unknown error')}"
+            )
+
+            return None
+
+
+        has_photo = result.get(
+            "has_photo",
+            False
+        )
+
+
+        if not has_photo:
+
+            print(
+                "[PHOTO API] "
+                "Customer ditemukan tetapi foto tidak tersedia."
+            )
+
+            print(
+                "[PHOTO API] "
+                f"photo_type={result.get('photo_type')}"
+            )
+
+            print(
+                "[PHOTO API] "
+                f"message={result.get('message')}"
             )
 
             return None
@@ -1562,16 +1514,63 @@ def get_customer_photo(
         if not image_base64:
 
             print(
-                "PHOTO API: image_base64 kosong."
+                "[PHOTO API] "
+                "image_base64 kosong."
             )
 
             return None
 
 
-        image_bytes = base64.b64decode(
-            image_base64
-        )
+        # -------------------------------------------------
+        # Jika API mengembalikan data URL
+        # -------------------------------------------------
 
+        if "," in image_base64:
+
+            prefix, image_base64 = (
+                image_base64.split(
+                    ",",
+                    1
+                )
+            )
+
+
+        # -------------------------------------------------
+        # Decode Base64
+        # -------------------------------------------------
+
+        try:
+
+            image_bytes = (
+                base64.b64decode(
+                    image_base64,
+                    validate=True
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                "[PHOTO API] "
+                f"Base64 tidak valid: {e}"
+            )
+
+            return None
+
+
+        if not image_bytes:
+
+            print(
+                "[PHOTO API] "
+                "Image bytes kosong."
+            )
+
+            return None
+
+
+        # -------------------------------------------------
+        # MIME TYPE
+        # -------------------------------------------------
 
         mime_type = result.get(
             "mime_type",
@@ -1579,14 +1578,51 @@ def get_customer_photo(
         )
 
 
-        extension = (
-            "jpg"
-            if mime_type == "image/jpeg"
-            else
-            "png"
-            if mime_type == "image/png"
-            else
-            "jpg"
+        if not mime_type:
+
+            mime_type = "image/jpeg"
+
+
+        mime_type = (
+            str(
+                mime_type
+            )
+            .lower()
+            .split(
+                ";",
+                1
+            )[0]
+            .strip()
+        )
+
+
+        # -------------------------------------------------
+        # EXTENSION
+        # -------------------------------------------------
+
+        if mime_type == "image/png":
+
+            extension = "png"
+
+        elif mime_type == "image/webp":
+
+            extension = "webp"
+
+        elif mime_type == "image/gif":
+
+            extension = "gif"
+
+        else:
+
+            extension = "jpg"
+
+
+        print(
+            "[PHOTO API] "
+            f"Foto berhasil diterima. "
+            f"Type={result.get('photo_type')} "
+            f"MIME={mime_type} "
+            f"Size={len(image_bytes)} bytes"
         )
 
 
@@ -1597,11 +1633,31 @@ def get_customer_photo(
         )
 
 
+    except requests.exceptions.Timeout:
+
+        print(
+            "[PHOTO API] "
+            "Request timeout."
+        )
+
+        return None
+
+
+    except requests.exceptions.RequestException as e:
+
+        print(
+            "[PHOTO API] "
+            f"Request error: {e}"
+        )
+
+        return None
+
+
     except Exception as e:
 
         print(
-            "Gagal mengambil foto customer:",
-            e
+            "[PHOTO API] "
+            f"Error: {e}"
         )
 
         return None
@@ -1634,7 +1690,7 @@ def build_customer_detail(
 
 
 # =========================================================
-# BUILD BACK BUTTON
+# BACK BUTTON
 # =========================================================
 
 def build_hist_back_keyboard():
@@ -1662,6 +1718,10 @@ async def hist_detail_handler(
 
     query = update.callback_query
 
+    if not query:
+        return
+
+
     user = query.from_user
 
     await query.answer()
@@ -1675,17 +1735,31 @@ async def hist_detail_handler(
         user.id
     ):
 
-        await query.edit_message_text(
-            "⛔️ AKSES DITOLAK\n\n"
-            "Anda tidak memiliki akses."
-        )
+        try:
+
+            await query.edit_message_text(
+                "⛔️ AKSES DITOLAK\n\n"
+                "Anda tidak memiliki akses."
+            )
+
+        except Exception as e:
+
+            print(
+                "[HIST DETAIL] "
+                f"Gagal edit access denied: {e}"
+            )
 
         return
 
 
     # =====================================================
-    # AMBIL INDEX
+    # CEK CALLBACK
     # =====================================================
+
+    if not query.data:
+
+        return
+
 
     try:
 
@@ -1743,8 +1817,14 @@ async def hist_detail_handler(
     row = df.loc[index]
 
 
-    caption_detail = build_customer_detail(
-        row
+    # =====================================================
+    # DETAIL
+    # =====================================================
+
+    caption_detail = (
+        build_customer_detail(
+            row
+        )
     )
 
 
@@ -1757,7 +1837,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # HAPUS PESAN MENU PILIHAN LAMA
+    # HAPUS PESAN LIST
     # =====================================================
 
     try:
@@ -1766,19 +1846,19 @@ async def hist_detail_handler(
 
         print(
             "[HIST DETAIL] "
-            "Pesan list customer berhasil dihapus."
+            "List customer berhasil dihapus."
         )
 
     except Exception as e:
 
         print(
             "[HIST DETAIL] "
-            f"Gagal menghapus pesan list lama: {e}"
+            f"Gagal menghapus list lama: {e}"
         )
 
 
     # =====================================================
-    # JIKA CUST ID KOSONG
+    # CUST ID KOSONG
     # =====================================================
 
     if not cust_id:
@@ -1796,17 +1876,31 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # NOTIFIKASI SEMENTARA
+    # LOADING
     # =====================================================
 
-    loading_msg = await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text="🔄 Mencari foto rumah..."
-    )
+    loading_msg = None
+
+
+    try:
+
+        loading_msg = (
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="🔄 Mencari foto rumah..."
+            )
+        )
+
+    except Exception as e:
+
+        print(
+            "[HIST DETAIL] "
+            f"Gagal mengirim loading: {e}"
+        )
 
 
     # =====================================================
-    # AMBIL FOTO
+    # AMBIL FOTO DARI APPS SCRIPT
     # =====================================================
 
     photo_result = get_customer_photo(
@@ -1815,16 +1909,18 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # HAPUS PESAN STATUS PENCARIAN
+    # HAPUS LOADING
     # =====================================================
 
-    try:
+    if loading_msg:
 
-        await loading_msg.delete()
+        try:
 
-    except Exception:
+            await loading_msg.delete()
 
-        pass
+        except Exception:
+
+            pass
 
 
     # =====================================================
@@ -1851,7 +1947,7 @@ async def hist_detail_handler(
 
 
     # =====================================================
-    # KIRIM FOTO DENGAN CAPTION DETAIL
+    # KIRIM FOTO
     # =====================================================
 
     try:
@@ -1866,6 +1962,9 @@ async def hist_detail_handler(
         )
 
 
+        photo_file.seek(0)
+
+
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
             photo=photo_file,
@@ -1875,7 +1974,8 @@ async def hist_detail_handler(
 
 
         print(
-            f"[PHOTO SENT WITH CAPTION] "
+            "[HIST DETAIL] "
+            f"Foto berhasil dikirim. "
             f"CUST ID={cust_id}"
         )
 
@@ -1883,8 +1983,8 @@ async def hist_detail_handler(
     except Exception as e:
 
         print(
-            "Gagal mengirim foto Telegram:",
-            e
+            "[HIST DETAIL] "
+            f"Gagal mengirim foto Telegram: {e}"
         )
 
 
@@ -1908,6 +2008,10 @@ async def hist_back_handler(
 ):
 
     query = update.callback_query
+
+    if not query:
+        return
+
 
     user = query.from_user
 
@@ -1937,7 +2041,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # AMBIL KEYWORD PENCARIAN SEBELUMNYA
+    # KEYWORD SEBELUMNYA
     # =====================================================
 
     keyword = context.user_data.get(
@@ -1961,7 +2065,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # AMBIL DATA CUSTOMER TERBARU
+    # DATA TERBARU
     # =====================================================
 
     try:
@@ -1989,7 +2093,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # CARI ULANG BERDASARKAN KEYWORD
+    # CARI ULANG
     # =====================================================
 
     hasil = build_hist_result(
@@ -2014,7 +2118,7 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # UPDATE INDEX HASIL PENCARIAN
+    # UPDATE INDEX
     # =====================================================
 
     context.user_data[
@@ -2026,38 +2130,35 @@ async def hist_back_handler(
 
 
     # =====================================================
-    # BUAT ULANG LIST CUSTOMER
+    # BUILD LIST
     # =====================================================
 
-    text, reply_markup = build_hist_list_message(
-        hasil,
-        keyword
+    text, reply_markup = (
+        build_hist_list_message(
+            hasil,
+            keyword
+        )
     )
 
 
     # =====================================================
-    # HAPUS PESAN FOTO / DETAIL TERLEBIH DAHULU
+    # HAPUS DETAIL / FOTO
     # =====================================================
 
     try:
 
         await query.message.delete()
 
-        print(
-            "[HIST BACK] "
-            "Foto/detail customer berhasil dihapus."
-        )
-
     except Exception as e:
 
         print(
             "[HIST BACK] "
-            f"Gagal menghapus foto/detail customer: {e}"
+            f"Gagal menghapus detail/foto: {e}"
         )
 
 
     # =====================================================
-    # KIRIM ULANG LIST CUSTOMER
+    # KIRIM LIST LAGI
     # =====================================================
 
     try:
@@ -2068,21 +2169,16 @@ async def hist_back_handler(
             reply_markup=reply_markup
         )
 
-        print(
-            "[HIST BACK] "
-            "List customer berhasil dikirim ulang."
-        )
-
     except Exception as e:
 
         print(
             "[HIST BACK] "
-            f"Gagal mengirim list customer: {e}"
+            f"Gagal mengirim list: {e}"
         )
 
 
 # =========================================================
-# LIST
+# LIST SEMUA ODP
 # =========================================================
 
 @access_required
@@ -2102,15 +2198,58 @@ async def list_all(
     for _, row in df.iterrows():
 
         text += (
-            f"{row['Nama ODP']} | "
-            f"{row['RK']} | "
-            f"{row['PIU']}\n"
+            f"{row.get('Nama ODP', '-')}"
+            f" | {row.get('RK', '-')}"
+            f" | {row.get('PIU', '-')}\n"
         )
 
 
-    await update.message.reply_text(
-        text
-    )
+    # -----------------------------------------------------
+    # Telegram memiliki batas pesan.
+    # -----------------------------------------------------
+
+    max_length = 4000
+
+
+    if len(text) <= max_length:
+
+        await update.message.reply_text(
+            text
+        )
+
+        return
+
+
+    # -----------------------------------------------------
+    # Pecah pesan
+    # -----------------------------------------------------
+
+    current = ""
+
+
+    for line in text.splitlines(
+        keepends=True
+    ):
+
+        if len(
+            current
+        ) + len(line) > max_length:
+
+            await update.message.reply_text(
+                current
+            )
+
+            current = ""
+
+
+        current += line
+
+
+    if current:
+
+        await update.message.reply_text(
+            current
+        )
 
 
 # =========================================================
@@ -2168,6 +2307,10 @@ async def button_handler(
 
     query = update.callback_query
 
+    if not query:
+        return
+
+
     user = query.from_user
 
     await query.answer()
@@ -2181,24 +2324,23 @@ async def button_handler(
         user.id
     ):
 
-        await query.edit_message_text(
-            "⛔️ AKSES DITOLAK\n\n"
-            "Anda belum terdaftar sebagai pengguna bot.\n\n"
-            "Silakan hubungi owner untuk mendapatkan akses."
-        )
+        try:
 
-        print(
-            f"[BUTTON ACCESS DENIED] "
-            f"ID={user.id}"
-        )
+            await query.edit_message_text(
+                "⛔️ AKSES DITOLAK\n\n"
+                "Anda belum terdaftar sebagai pengguna bot.\n\n"
+                "Silakan hubungi owner untuk mendapatkan akses."
+            )
+
+        except Exception:
+
+            pass
 
         return
 
 
     # =====================================================
-    # BUTTON CARI
-    #
-    # HANYA LEVEL 2
+    # CARI
     # =====================================================
 
     if query.data == "cari":
@@ -2221,14 +2363,14 @@ async def button_handler(
             "Gunakan:\n"
             "/cari <RK>\n\n"
             "Contoh:\n"
-            "/cari GPK0\n\n"
+            "/cari GPK0"
         )
 
         return
 
 
     # =====================================================
-    # BUTTON INFO
+    # INFO
     # =====================================================
 
     if query.data == "info":
@@ -2244,7 +2386,7 @@ async def button_handler(
 
 
     # =====================================================
-    # BUTTON HIST
+    # HIST
     # =====================================================
 
     if query.data == "hist":
@@ -2263,17 +2405,6 @@ async def button_handler(
 
 # =========================================================
 # ADD USER
-#
-# Sekarang:
-#
-# /adduser <Telegram ID>
-#
-# Default level = 1
-#
-# Untuk menambahkan Level 2:
-#
-# /adduser <Telegram ID> 2
-#
 # =========================================================
 
 async def adduser(
@@ -2282,6 +2413,9 @@ async def adduser(
 ):
 
     user = update.effective_user
+
+    if not user:
+        return
 
 
     if not is_owner(
@@ -2311,10 +2445,6 @@ async def adduser(
         return
 
 
-    # =====================================================
-    # TELEGRAM ID
-    # =====================================================
-
     try:
 
         new_user_id = int(
@@ -2329,10 +2459,6 @@ async def adduser(
 
         return
 
-
-    # =====================================================
-    # LEVEL
-    # =====================================================
 
     level = 1
 
@@ -2356,27 +2482,17 @@ async def adduser(
             return
 
 
-    # =====================================================
-    # VALIDASI LEVEL
-    # =====================================================
-
     if level not in (
         1,
         2
     ):
 
         await update.message.reply_text(
-            "❌ Level hanya boleh 1 atau 2.\n\n"
-            "1 = User biasa\n"
-            "2 = User Level 2"
+            "❌ Level hanya boleh 1 atau 2."
         )
 
         return
 
-
-    # =====================================================
-    # OWNER TIDAK PERLU DITAMBAHKAN
-    # =====================================================
 
     if new_user_id == int(
         OWNER_ID
@@ -2389,62 +2505,21 @@ async def adduser(
         return
 
 
-    # =====================================================
-    # LOAD USERS
-    # =====================================================
-
     allowed_users = load_users()
 
 
-    # =====================================================
-    # JIKA SUDAH ADA
-    # =====================================================
-
-    if str(
+    user_key = str(
         new_user_id
-    ) in allowed_users:
-
-        old_level = allowed_users[
-            str(new_user_id)
-        ]
+    )
 
 
-        # Update level
-        allowed_users[
-            str(new_user_id)
-        ] = level
+    old_level = allowed_users.get(
+        user_key
+    )
 
-
-        save_users(
-            allowed_users
-        )
-
-
-        await update.message.reply_text(
-            f"✅ LEVEL USER DIPERBARUI\n\n"
-            f"Telegram ID: `{new_user_id}`\n"
-            f"Level lama: `{old_level}`\n"
-            f"Level baru: `{level}`",
-            parse_mode="Markdown"
-        )
-
-
-        print(
-            f"[USER LEVEL UPDATED] "
-            f"ID={new_user_id} "
-            f"Level={old_level}->{level} "
-            f"oleh OWNER={user.id}"
-        )
-
-        return
-
-
-    # =====================================================
-    # TAMBAHKAN USER BARU
-    # =====================================================
 
     allowed_users[
-        str(new_user_id)
+        user_key
     ] = level
 
 
@@ -2453,41 +2528,28 @@ async def adduser(
     )
 
 
-    # =====================================================
-    # VERIFY
-    # =====================================================
+    if old_level is None:
 
-    verify_users = load_users()
-
-
-    if (
-        str(new_user_id)
-        in verify_users
-    ):
-
-        await update.message.reply_text(
+        message = (
             f"✅ USER BERHASIL DITAMBAHKAN\n\n"
             f"Telegram ID: `{new_user_id}`\n"
-            f"Level: `{level}`\n\n"
-            f"Level 2 dapat menggunakan /cari.",
-            parse_mode="Markdown"
+            f"Level: `{level}`"
         )
-
-
-        print(
-            f"[USER ADDED] "
-            f"ID={new_user_id} "
-            f"Level={level} "
-            f"oleh OWNER={user.id}"
-        )
-
 
     else:
 
-        await update.message.reply_text(
-            "❌ User gagal disimpan.\n\n"
-            "Periksa log Railway."
+        message = (
+            f"✅ LEVEL USER DIPERBARUI\n\n"
+            f"Telegram ID: `{new_user_id}`\n"
+            f"Level lama: `{old_level}`\n"
+            f"Level baru: `{level}`"
         )
+
+
+    await update.message.reply_text(
+        message,
+        parse_mode="Markdown"
+    )
 
 
 # =========================================================
@@ -2500,6 +2562,9 @@ async def deluser(
 ):
 
     user = update.effective_user
+
+    if not user:
+        return
 
 
     if not is_owner(
@@ -2563,9 +2628,7 @@ async def deluser(
     if user_key not in allowed_users:
 
         await update.message.reply_text(
-            f"ℹ️ User {delete_user_id} "
-            f"tidak ditemukan.",
-            parse_mode="Markdown"
+            f"ℹ️ User {delete_user_id} tidak ditemukan."
         )
 
         return
@@ -2588,13 +2651,6 @@ async def deluser(
     )
 
 
-    print(
-        f"[USER REMOVED] "
-        f"ID={delete_user_id} "
-        f"oleh OWNER={user.id}"
-    )
-
-
 # =========================================================
 # USERS
 # =========================================================
@@ -2605,6 +2661,9 @@ async def users(
 ):
 
     user = update.effective_user
+
+    if not user:
+        return
 
 
     if not is_owner(
@@ -2674,15 +2733,6 @@ async def users(
 
 # =========================================================
 # SET LEVEL
-#
-# Command tambahan:
-#
-# /setlevel <Telegram ID> <level>
-#
-# Contoh:
-#
-# /setlevel 392836663 2
-#
 # =========================================================
 
 async def setlevel(
@@ -2691,6 +2741,9 @@ async def setlevel(
 ):
 
     user = update.effective_user
+
+    if not user:
+        return
 
 
     if not is_owner(
@@ -2804,14 +2857,6 @@ async def setlevel(
     )
 
 
-    print(
-        f"[LEVEL CHANGED] "
-        f"ID={target_user_id} "
-        f"{old_level}->{new_level} "
-        f"oleh OWNER={user.id}"
-    )
-
-
 # =========================================================
 # MAIN
 # =========================================================
@@ -2822,31 +2867,30 @@ def main():
         "================================="
     )
 
-
     print(
         "BOT ODP BIZNET"
     )
-
 
     print(
         f"OWNER_ID: {OWNER_ID}"
     )
 
-
     print(
         f"USERS_FILE: {USERS_FILE}"
     )
-
 
     print(
         f"USERS: {load_users()}"
     )
 
-
     print(
         "================================="
     )
 
+
+    # =====================================================
+    # BUILD APPLICATION
+    # =====================================================
 
     app = (
         Application
@@ -2949,7 +2993,7 @@ def main():
 
 
     # =====================================================
-    # HISTORY CUSTOMER CALLBACK
+    # HIST CALLBACK
     # =====================================================
 
     app.add_handler(
@@ -2969,7 +3013,7 @@ def main():
 
 
     # =====================================================
-    # GENERAL BUTTON CALLBACK
+    # GENERAL BUTTON
     # =====================================================
 
     app.add_handler(
@@ -2983,18 +3027,24 @@ def main():
     # AUTO REFRESH
     # =====================================================
 
-    job_queue = app.job_queue
+    if app.job_queue:
 
+        app.job_queue.run_repeating(
+            refresh_data,
+            interval=60,
+            first=5
+        )
 
-    job_queue.run_repeating(
-        refresh_data,
-        interval=60,
-        first=5
-    )
+    else:
+
+        print(
+            "⚠️ JobQueue tidak tersedia. "
+            "Install python-telegram-bot[job-queue]."
+        )
 
 
     # =====================================================
-    # RUN BOT
+    # RUN
     # =====================================================
 
     print(
@@ -3008,7 +3058,7 @@ def main():
 
 
 # =========================================================
-# RUN PROGRAM
+# RUN
 # =========================================================
 
 if __name__ == "__main__":
