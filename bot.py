@@ -1,9 +1,9 @@
-    import pandas as pd
-    import os
-    import json
-    import io
-    import re
-    import requests
+import pandas as pd
+import os
+import json
+import io
+import re
+import requests
 
     from functools import wraps
 
