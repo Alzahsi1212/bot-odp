@@ -1646,6 +1646,7 @@ def build_customer_detail(
         f"SN         : {row.get('SN', '-')}\n"
         f"Layanan    : {row.get('Layanan', '-')}\n"
         f"Alamat     : {row.get('Alamat', '-')}\n"
+        f"No.Telp/WA : {row.get('PN', '-')}\n"
         f"ODP        : {row.get('ODP', '-')}\n"
         f"Port DP    : {row.get('Port DP', '-')}\n"
         f"Kabel      : {row.get('Kabel', '-')}\n"
