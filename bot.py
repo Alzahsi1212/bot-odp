@@ -2676,7 +2676,7 @@ def main():
 
     app.add_handler(
         CommandHandler(
-            "list!",
+            "lists",
             list_all
         )
     )
