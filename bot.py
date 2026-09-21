@@ -617,7 +617,7 @@ def get_customer_data():
 # AUTO REFRESH
 # =========================================================
 
-def refresh_data(
+async def refresh_data(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
