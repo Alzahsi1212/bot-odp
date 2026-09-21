@@ -17,10 +17,23 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
-    ContextTypes
+    ContextTypes,
+    TypeHandler,
+    ApplicationHandlerStop
 )
 
 from config import TOKEN, OWNER_ID
+
+
+# =========================================================
+# KONFIGURASI GRUP TELEGRAM
+# =========================================================
+# User biasa hanya dapat menggunakan bot di grup ini.
+# Owner tetap dapat menggunakan bot di private chat maupun
+# grup lain.
+# =========================================================
+
+ALLOWED_GROUP_ID = -1003736457164
 
 
 # =========================================================
@@ -43,24 +56,6 @@ CUSTOMER_URL = (
     "2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/"
     "pub?gid=2141022117&single=true&output=csv"
 )
-
-
-# =========================================================
-# GOOGLE APPS SCRIPT
-# =========================================================
-# Tidak digunakan lagi untuk foto.
-#
-# Foto sekarang diambil langsung dari URL yang ada
-# pada kolom "Foto Rumah" di Sheet2.
-# =========================================================
-
-PHOTO_API_URL = (
-    "https://script.google.com/macros/s/"
-    "AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/"
-    "exec"
-)
-
-
 # =========================================================
 # API KEY
 # =========================================================
@@ -438,6 +433,54 @@ def is_owner(user_id):
 
 
 # =========================================================
+# GLOBAL CHAT ACCESS GUARD
+# =========================================================
+
+async def chat_access_guard(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """
+    Membatasi penggunaan bot berdasarkan lokasi chat.
+
+    OWNER:
+        - Boleh menggunakan bot di private chat.
+        - Boleh menggunakan bot di grup mana pun.
+
+    USER BIASA:
+        - Hanya boleh menggunakan bot di ALLOWED_GROUP_ID.
+        - Private chat dan grup lain diblokir.
+
+    Guard ini dipasang sebagai handler paling awal sehingga
+    semua command dan callback ikut terkena pembatasan.
+    """
+
+    user = update.effective_user
+    chat = update.effective_chat
+
+    if not user or not chat:
+        raise ApplicationHandlerStop
+
+    # Owner bebas menggunakan bot di chat mana pun.
+    if is_owner(user.id):
+        return
+
+    # User biasa hanya boleh di grup yang ditentukan.
+    if chat.id != ALLOWED_GROUP_ID:
+        print(
+            f"[CHAT BLOCKED] "
+            f"USER_ID={user.id} "
+            f"USERNAME=@{user.username} "
+            f"CHAT_ID={chat.id} "
+            f"CHAT_TYPE={chat.type}"
+        )
+
+        # Jangan kirim pesan penolakan agar bot benar-benar
+        # diam di private chat/grup lain.
+        raise ApplicationHandlerStop
+
+
+# =========================================================
 # ACCESS DECORATOR
 # =========================================================
 
@@ -617,7 +660,7 @@ def get_customer_data():
 # AUTO REFRESH
 # =========================================================
 
-async def refresh_data(
+def refresh_data(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
@@ -2581,6 +2624,21 @@ def main():
 
 
     # =====================================================
+    # GLOBAL CHAT ACCESS GUARD
+    # =====================================================
+    # Dipasang pada group=-1 agar pemeriksaan lokasi chat
+    # dilakukan sebelum seluruh command/callback handler.
+
+    app.add_handler(
+        TypeHandler(
+            Update,
+            chat_access_guard
+        ),
+        group=-1
+    )
+
+
+    # =====================================================
     # COMMAND HANDLERS
     # =====================================================
 
@@ -2618,7 +2676,7 @@ def main():
 
     app.add_handler(
         CommandHandler(
-            "list",
+            "list!",
             list_all
         )
     )
