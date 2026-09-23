@@ -56,6 +56,24 @@ CUSTOMER_URL = (
     "2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/"
     "pub?gid=2141022117&single=true&output=csv"
 )
+
+
+# =========================================================
+# GOOGLE APPS SCRIPT
+# =========================================================
+# Tidak digunakan lagi untuk foto.
+#
+# Foto sekarang diambil langsung dari URL yang ada
+# pada kolom "Foto Rumah" di Sheet2.
+# =========================================================
+
+PHOTO_API_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbzRdHg4OpFTNSa4MY33n1NnJ5qlwRQ9r_9bm-jImqma36mBWlUwq14-rQc_VPrIvie2/"
+    "exec"
+)
+
+
 # =========================================================
 # API KEY
 # =========================================================
@@ -599,6 +617,31 @@ def normalize(text):
 
 
 # =========================================================
+# HITUNG JUMLAH CUSTOMER ODP
+# =========================================================
+
+def count_customer(row):
+    total = 0
+
+    for port in [
+        "Port1", "Port2", "Port3", "Port4", "Port5", "Port6", "Port7", "Port8", "Port9", "Port10", "Port11", "Port12", "Port13", "Port14", "Port15", "Port16"
+    ]:
+        value = row.get(port, "")
+
+        if value is None:
+            continue
+
+        value = str(value).strip()
+
+        if not value or value.lower() in ["nan", "none", "-", "--"]:
+            continue
+
+        total += 1
+
+    return total
+
+
+# =========================================================
 # GET DATA ODP
 # =========================================================
 
@@ -776,6 +819,7 @@ async def start(
         "/menu\n"
         "/info <ODP>\n"
         "/cari <RK>\n"
+        "/piu <PIU>\n"
         "/hist <Nama/SN/BRIM ID/CUST ID>"
     )
 
@@ -791,75 +835,61 @@ async def info(
 ):
 
     if not context.args:
-
         await update.message.reply_text(
             "Format: /info <Nama ODP>\n"
             "Contoh: /info GPK020101"
         )
-
         return
 
-
     nama_odp = context.args[0]
-
     df = get_data()
-
 
     mask = (
         df["Nama ODP"]
         .astype(str)
         .apply(normalize)
-        ==
-        normalize(nama_odp)
+        == normalize(nama_odp)
     )
-
 
     hasil = df[mask]
 
-
     if hasil.empty:
-
-        await update.message.reply_text(
-            "ODP tidak ditemukan."
-        )
-
+        await update.message.reply_text("ODP tidak ditemukan.")
         return
 
-
     row = hasil.iloc[0]
-
+    jumlah_cust = count_customer(row)
 
     pesan = f"""
 📌 INFO ODP
 
-Nama ODP : {row.get('Nama ODP', '-')}
-RK       : {row.get('RK', '-')}
-IP OLT   : {row.get('IP OLT', '-')}
-PIU      : {row.get('PIU', '-')}
-Lokasi   : {row.get('Lokasi', '-')}
+Nama ODP    : {row.get('Nama ODP', '-')}
+RK          : {row.get('RK', '-')}
+IP OLT      : {row.get('IP OLT', '-')}
+PIU         : {row.get('PIU', '-')}
+Lokasi      : {row.get('Lokasi', '-')}
 
-Port1    : {row.get('Port1', '-')}
-Port2    : {row.get('Port2', '-')}
-Port3    : {row.get('Port3', '-')}
-Port4    : {row.get('Port4', '-')}
-Port5    : {row.get('Port5', '-')}
-Port6    : {row.get('Port6', '-')}
-Port7    : {row.get('Port7', '-')}
-Port8    : {row.get('Port8', '-')}
-Port9    : {row.get('Port9', '-')}
-Port10   : {row.get('Port10', '-')}
-Port11   : {row.get('Port11', '-')}
-Port12   : {row.get('Port12', '-')}
-Port13   : {row.get('Port13', '-')}
-Port14   : {row.get('Port14', '-')}
-Port15   : {row.get('Port15', '-')}
-Port16   : {row.get('Port16', '-')}
+Jumlah Cust : {jumlah_cust}
+
+Port1       : {row.get('Port1', '-')}
+Port2       : {row.get('Port2', '-')}
+Port3       : {row.get('Port3', '-')}
+Port4       : {row.get('Port4', '-')}
+Port5       : {row.get('Port5', '-')}
+Port6       : {row.get('Port6', '-')}
+Port7       : {row.get('Port7', '-')}
+Port8       : {row.get('Port8', '-')}
+Port9       : {row.get('Port9', '-')}
+Port10      : {row.get('Port10', '-')}
+Port11      : {row.get('Port11', '-')}
+Port12      : {row.get('Port12', '-')}
+Port13      : {row.get('Port13', '-')}
+Port14      : {row.get('Port14', '-')}
+Port15      : {row.get('Port15', '-')}
+Port16      : {row.get('Port16', '-')}
 """
 
-
-    await update.message.reply_text(
-        pesan
-    )
+    await update.message.reply_text(pesan)
 
 
 # =========================================================
@@ -893,24 +923,34 @@ def build_cari_message(
 
     first = hasil.iloc[0]
 
-
     text = (
         f"📍 LIST ODP RK {rk.upper()}\n\n"
         f"PIN      : {first.get('PIN', '-')}\n"
         f"Backbone : {first.get('Backbone', '-')}\n"
+        f"Mcore    : {first.get('Mcore', '-')}\n"
         f"Tikor    : {first.get('Tikor', '-')}\n\n"
-        f"Daftar ODP:\n"
+        f"Daftar ODP:\n\n"
     )
 
+    total_cust = 0
 
     for _, row in hasil.iterrows():
+        nama_odp = str(row.get('Nama ODP', '-')).strip()
+        piu_name = str(row.get('PIU', '-')).strip()
+        jumlah_cust = count_customer(row)
+        total_cust += jumlah_cust
 
         text += (
-            f"- {row.get('Nama ODP', '-')}"
-            f" | {row.get('PIU', '-')}"
-            f" | {row.get('Lokasi', '-')}\n"
+            f"- {nama_odp}\n"
+            f"  PIU         : {piu_name}\n"
+            f"  Jumlah Cust : {jumlah_cust}\n\n"
         )
 
+    text += (
+        "━━━━━━━━━━━━━━\n"
+        f"Total ODP  : {len(hasil)}\n"
+        f"Total Cust : {total_cust}"
+    )
 
     return text
 
@@ -1072,6 +1112,126 @@ async def cari(
                 "[CARI] Gagal mengirim error:",
                 notify_error
             )
+
+
+# =========================================================
+# BUILD PIU RESULT
+# =========================================================
+
+def build_piu_result(
+    df,
+    piu
+):
+
+    mask = (
+        df["PIU"]
+        .astype(str)
+        .apply(normalize)
+        == normalize(piu)
+    )
+
+    return df[mask]
+
+
+# =========================================================
+# BUILD PIU MESSAGE
+# =========================================================
+
+def build_piu_message(
+    hasil,
+    piu
+):
+
+    text = (
+        f"📍 LIST ODP PIU {piu.upper()}\n\n"
+        f"Daftar ODP:\n\n"
+    )
+
+    total_cust = 0
+
+    for _, row in hasil.iterrows():
+        nama_odp = str(row.get("Nama ODP", "-")).strip()
+        rk = str(row.get("RK", "-")).strip()
+        jumlah_cust = count_customer(row)
+        total_cust += jumlah_cust
+
+        text += (
+            f"- {nama_odp}\n"
+            f"  RK          : {rk}\n"
+            f"  Jumlah Cust : {jumlah_cust}\n\n"
+        )
+
+    text += (
+        "━━━━━━━━━━━━━━\n"
+        f"Total ODP  : {len(hasil)}\n"
+        f"Total Cust : {total_cust}"
+    )
+
+    return text
+
+
+# =========================================================
+# PIU
+# =========================================================
+
+@access_required
+async def piu(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user = update.effective_user
+    message = update.message
+
+    if not user or not message:
+        return
+
+    if not context.args:
+        await message.reply_text(
+            "Format: /piu <PIU>\n\n"
+            "Contoh:\n"
+            "/piu PIU01"
+        )
+        return
+
+    piu_name = context.args[0].strip()
+
+    if not piu_name:
+        await message.reply_text("❌ PIU tidak boleh kosong.")
+        return
+
+    try:
+        df = get_data()
+    except Exception as e:
+        print("Gagal mengambil data ODP:", e)
+        await message.reply_text("❌ Gagal membaca data ODP.")
+        return
+
+    hasil = build_piu_result(df, piu_name)
+
+    if hasil.empty:
+        await message.reply_text(
+            f"❌ PIU `{piu_name}` tidak ditemukan.",
+            parse_mode="Markdown"
+        )
+        return
+
+    text = build_piu_message(hasil, piu_name)
+    max_length = 4000
+
+    if len(text) <= max_length:
+        await message.reply_text(text)
+        return
+
+    current = ""
+    for line in text.splitlines(keepends=True):
+        if len(current) + len(line) > max_length:
+            await message.reply_text(current)
+            current = ""
+        current += line
+
+    if current:
+        await message.reply_text(current)
 
 
 # =========================================================
@@ -1929,73 +2089,6 @@ async def hist_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
-# LIST SEMUA ODP
-# =========================================================
-
-@access_required
-async def list_all(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    df = get_data()
-
-
-    text = (
-        "📋 SEMUA DATA ODP\n\n"
-    )
-
-
-    for _, row in df.iterrows():
-
-        text += (
-            f"{row.get('Nama ODP', '-')}"
-            f" | {row.get('RK', '-')}"
-            f" | {row.get('PIU', '-')}\n"
-        )
-
-
-    max_length = 4000
-
-
-    if len(text) <= max_length:
-
-        await update.message.reply_text(
-            text
-        )
-
-        return
-
-
-    current = ""
-
-
-    for line in text.splitlines(
-        keepends=True
-    ):
-
-        if len(
-            current
-        ) + len(line) > max_length:
-
-            await update.message.reply_text(
-                current
-            )
-
-            current = ""
-
-
-        current += line
-
-
-    if current:
-
-        await update.message.reply_text(
-            current
-        )
-
-
-# =========================================================
 # MENU
 # =========================================================
 
@@ -2668,16 +2761,16 @@ def main():
 
     app.add_handler(
         CommandHandler(
-            "hist",
-            hist
+            "piu",
+            piu
         )
     )
 
 
     app.add_handler(
         CommandHandler(
-            "lists",
-            list_all
+            "hist",
+            hist
         )
     )
 
