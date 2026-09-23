@@ -869,7 +869,7 @@ IP OLT      : {row.get('IP OLT', '-')}
 PIU         : {row.get('PIU', '-')}
 Lokasi      : {row.get('Lokasi', '-')}
 
-Jumlah Cust : {jumlah_cust}
+Jumlah Customer : {jumlah_cust}
 
 Port1       : {row.get('Port1', '-')}
 Port2       : {row.get('Port2', '-')}
@@ -924,12 +924,12 @@ def build_cari_message(
     first = hasil.iloc[0]
 
     text = (
-        f"📍 LIST ODP RK {rk.upper()}\n\n"
+        f"📍 Detail RK {rk.upper()}\n\n"
         f"PIN      : {first.get('PIN', '-')}\n"
         f"Backbone : {first.get('Backbone', '-')}\n"
         f"Mcore    : {first.get('Mcore', '-')}\n"
         f"Tikor    : {first.get('Tikor', '-')}\n\n"
-        f"Daftar ODP:\n\n"
+        f"List ODP:\n\n"
     )
 
     total_cust = 0
@@ -943,7 +943,7 @@ def build_cari_message(
         text += (
             f"- {nama_odp}\n"
             f"  PIU         : {piu_name}\n"
-            f"  Jumlah Cust : {jumlah_cust}\n\n"
+            f"  Jumlah Customer : {jumlah_cust}\n\n"
         )
 
     text += (
@@ -1143,8 +1143,8 @@ def build_piu_message(
 ):
 
     text = (
-        f"📍 LIST ODP PIU {piu.upper()}\n\n"
-        f"Daftar ODP:\n\n"
+        f"📍 Detail PIU {piu.upper()}\n\n"
+        f"List ODP:\n\n"
     )
 
     total_cust = 0
@@ -1158,7 +1158,7 @@ def build_piu_message(
         text += (
             f"- {nama_odp}\n"
             f"  RK          : {rk}\n"
-            f"  Jumlah Cust : {jumlah_cust}\n\n"
+            f"  Jumlah Customer : {jumlah_cust}\n\n"
         )
 
     text += (
