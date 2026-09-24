@@ -33,7 +33,10 @@ from config import TOKEN, OWNER_ID
 # grup lain.
 # =========================================================
 
-ALLOWED_GROUP_ID = -1003736457164
+ALLOWED_GROUP_IDSS = [
+    -1003736457164,  # ID grup lama
+    -1001636360358,  # ID grup terbaru
+]
 
 
 # =========================================================
@@ -466,7 +469,7 @@ async def chat_access_guard(
         - Boleh menggunakan bot di grup mana pun.
 
     USER BIASA:
-        - Hanya boleh menggunakan bot di ALLOWED_GROUP_ID.
+        - Hanya boleh menggunakan bot di ALLOWED_GROUP_IDS.
         - Private chat dan grup lain diblokir.
 
     Guard ini dipasang sebagai handler paling awal sehingga
@@ -484,7 +487,7 @@ async def chat_access_guard(
         return
 
     # User biasa hanya boleh di grup yang ditentukan.
-    if chat.id != ALLOWED_GROUP_ID:
+    if chat.id != ALLOWED_GROUP_IDS:
         print(
             f"[CHAT BLOCKED] "
             f"USER_ID={user.id} "
@@ -923,16 +926,8 @@ def build_cari_message(
 
     first = hasil.iloc[0]
 
-    text = (
-        f"📍 Detail RK {rk.upper()}\n\n"
-        f"PIN      : {first.get('PIN', '-')}\n"
-        f"Backbone : {first.get('Backbone', '-')}\n"
-        f"Mcore    : {first.get('Mcore', '-')}\n"
-        f"Tikor    : {first.get('Tikor', '-')}\n\n"
-        f"List ODP:\n\n"
-    )
-
     total_cust = 0
+    list_text = ""
 
     for _, row in hasil.iterrows():
         nama_odp = str(row.get('Nama ODP', '-')).strip()
@@ -940,16 +935,26 @@ def build_cari_message(
         jumlah_cust = count_customer(row)
         total_cust += jumlah_cust
 
-        text += (
+        list_text += (
             f"- {nama_odp}\n"
             f"  PIU         : {piu_name}\n"
             f"  Jumlah Customer : {jumlah_cust}\n\n"
         )
 
-    text += (
-        "━━━━━━━━━━━━━━\n"
+    total_text = (
         f"Total ODP  : {len(hasil)}\n"
-        f"Total Cust : {total_cust}"
+        f"Total Customer : {total_cust}\n\n"
+    )
+
+    text = (
+        f"📍 Detail RK {rk.upper()}\n\n"
+        f"PIN      : {first.get('PIN', '-')}\n"
+        f"Backbone : {first.get('Backbone', '-')}\n"
+        f"Mcore    : {first.get('Mcore', '-')}\n"
+        f"Tikor    : {first.get('Tikor', '-')}\n"
+        f"{total_text}"
+        f"List ODP:\n\n"
+        + list_text
     )
 
     return text
@@ -1142,12 +1147,8 @@ def build_piu_message(
     piu
 ):
 
-    text = (
-        f"📍 Detail PIU {piu.upper()}\n\n"
-        f"List ODP:\n\n"
-    )
-
     total_cust = 0
+    list_text = ""
 
     for _, row in hasil.iterrows():
         nama_odp = str(row.get("Nama ODP", "-")).strip()
@@ -1155,16 +1156,22 @@ def build_piu_message(
         jumlah_cust = count_customer(row)
         total_cust += jumlah_cust
 
-        text += (
+        list_text += (
             f"- {nama_odp}\n"
             f"  RK          : {rk}\n"
             f"  Jumlah Customer : {jumlah_cust}\n\n"
         )
 
-    text += (
-        "━━━━━━━━━━━━━━\n"
+    total_text = (
         f"Total ODP  : {len(hasil)}\n"
-        f"Total Cust : {total_cust}"
+        f"Total Customer : {total_cust}\n\n"
+    )
+
+    text = (
+        f"📍 Detail PIU {piu.upper()}\n\n"
+        f"{total_text}"
+        f"List ODP:\n\n"
+        + list_text
     )
 
     return text
@@ -1190,7 +1197,7 @@ async def piu(
         await message.reply_text(
             "Format: /piu <PIU>\n\n"
             "Contoh:\n"
-            "/piu PIU01"
+            "/piu 0/1/4"
         )
         return
 
@@ -2109,6 +2116,13 @@ async def menu(
 
         [
             InlineKeyboardButton(
+                "📍 Detail PIU",
+                callback_data="piu"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
                 "ℹ️ Info ODP",
                 callback_data="info"
             )
@@ -2192,6 +2206,19 @@ async def button_handler(
             "/cari <RK>\n\n"
             "Contoh:\n"
             "/cari GPK0"
+        )
+
+        return
+
+
+    if query.data == "piu":
+
+        await query.edit_message_text(
+            "📍 DETAIL PIU\n\n"
+            "Gunakan:\n"
+            "/piu <PIU>\n\n"
+            "Contoh:\n"
+            "/piu PIU01"
         )
 
         return
