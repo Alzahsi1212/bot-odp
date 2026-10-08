@@ -33,7 +33,7 @@ from config import TOKEN, OWNER_ID
 # grup lain.
 # =========================================================
 
-ALLOWED_GROUP_IDSS = [
+ALLOWED_GROUP_IDS = [
     -1003736457164,  # ID grup lama
     -1001636360358,  # ID grup terbaru
 ]
@@ -487,7 +487,7 @@ async def chat_access_guard(
         return
 
     # User biasa hanya boleh di grup yang ditentukan.
-    if chat.id != ALLOWED_GROUP_IDS:
+    if chat.id not in ALLOWED_GROUP_IDS:
         print(
             f"[CHAT BLOCKED] "
             f"USER_ID={user.id} "
