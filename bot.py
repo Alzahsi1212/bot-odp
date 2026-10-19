@@ -2887,7 +2887,7 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ ALERT ODP HAMPIR FULL\n\n"
                 f"ODP: {odp_name}\n"
                 f"Port terisi: {total_ports}/16\n"
-                "Status: HAMPIR FULL — port terisi 9 sampai 15."
+                "Status: HAMPIR FULL."
             )
 
     # Jika ODP yang sama muncul beberapa kali, gunakan status terbaru per nama.
@@ -2927,10 +2927,8 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
             customer_name = str(row.get("Nama", "")).strip()
             customer_id = str(row.get("CUST ID", "")).strip()
             customer_alerts.append(
-                "🆕 Pelanggan Baru Telah Terdaftar\n\n"
+                "🆕 Pelanggan Baru Telah Terdaftar Pada DP "
                 f"ODP: {odp_name}\n"
-                f"Nama pelanggan: {customer_name}\n"
-                f"CUST ID: {customer_id}"
             )
 
     # Pertahankan daftar customer yang pernah lengkap, termasuk jika baris
