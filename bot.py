@@ -2786,6 +2786,7 @@ def load_alert_state():
     default_state = {
         "odp_status": {},
         "odp_full_alert_date": {},
+        "odp_almost_full_alert_count": {},
         "completed_customers": [],
         "initialized": False
     }
@@ -2798,6 +2799,7 @@ def load_alert_state():
             return default_state
         saved.setdefault("odp_status", {})
         saved.setdefault("odp_full_alert_date", {})
+        saved.setdefault("odp_almost_full_alert_count", {})
         saved.setdefault("completed_customers", [])
         saved.setdefault("initialized", False)
         return saved
@@ -2863,8 +2865,12 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
         return
 
     current_odp_status = {}
+    current_odp_counts = {}
+    current_odp_names = {}
     odp_alerts = []
 
+    # Gabungkan berdasarkan nama ODP terlebih dahulu supaya perubahan pada
+    # ODP lain atau baris duplikat tidak memicu alert berulang untuk ODP ini.
     for _, row in odp_df.iterrows():
         odp_name = get_odp_name(row)
         if not is_filled(odp_name):
@@ -2872,18 +2878,42 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
 
         total_ports, status = get_odp_alert_status(row)
         key = odp_name.strip().upper()
-        current_odp_status[key] = status
 
+        # Jika nama ODP duplikat, pakai jumlah port terbesar yang terbaca.
+        # Ini menghindari status tertimpa oleh baris duplikat yang lebih rendah.
+        if key not in current_odp_counts or total_ports > current_odp_counts[key]:
+            current_odp_counts[key] = total_ports
+            current_odp_status[key] = status
+            current_odp_names[key] = odp_name
+
+    almost_full_alert_count = state.setdefault("odp_almost_full_alert_count", {})
+
+    for key, total_ports in current_odp_counts.items():
+        status = current_odp_status[key]
+        odp_name = current_odp_names.get(key, key)
         previous_status = state["odp_status"].get(key)
 
-        # Pada pemeriksaan pertama, jadikan kondisi yang ada sebagai baseline
-        # supaya bot tidak langsung mengirim alert massal untuk data lama.
+        # Pemeriksaan pertama hanya membuat baseline, tidak mengirim alert
+        # untuk kondisi yang sudah ada sebelum bot mulai memantau.
         if not state.get("initialized", False):
-            # Jika ODP sudah FULL saat bot pertama dijalankan, tandai hari ini
-            # sebagai baseline agar tidak langsung mengirim alert pada putaran berikutnya.
+            almost_full_alert_count.setdefault(key, total_ports)
             if status == "FULL":
                 state["odp_full_alert_date"][key] = today_wita
             continue
+
+        # Migrasi state lama: jika sebelumnya sudah HAMPIR_FULL, anggap jumlah
+        # saat ini sebagai baseline agar deploy tidak mengirim alert duplikat.
+        if key not in almost_full_alert_count:
+            if previous_status == "HAMPIR_FULL":
+                # Pada kode lama alert HAMPIR_FULL dikirim saat pertama
+                # masuk rentang, umumnya 9/16. Lanjutkan dari angka 9.
+                almost_full_alert_count[key] = 9
+            elif previous_status == "FULL":
+                almost_full_alert_count[key] = 15
+            else:
+                almost_full_alert_count[key] = min(total_ports, 8)
+
+        last_almost_full_alert_count = int(almost_full_alert_count.get(key, 0) or 0)
 
         if status == "FULL":
             # Maksimal satu alert FULL per nama ODP setiap hari (zona waktu WITA).
@@ -2896,15 +2926,19 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
                     "Status: FULL — seluruh port telah terisi."
                 )
                 state["odp_full_alert_date"][key] = today_wita
-        elif status == "HAMPIR_FULL" and previous_status not in ("HAMPIR_FULL", "FULL"):
+        elif 9 <= total_ports <= 15 and total_ports > last_almost_full_alert_count:
+            # Kirim hanya saat jumlah port ODP ini naik ke level baru:
+            # 9/16, lalu 10/16, 11/16, dan seterusnya. Perubahan ODP lain
+            # tidak mengirim ulang alert selama jumlah ODP ini tidak bertambah.
             odp_alerts.append(
                 "⚠️ ALERT ODP HAMPIR FULL\n\n"
                 f"ODP: {odp_name}\n"
                 f"Port terisi: {total_ports}/16\n"
                 "Status: HAMPIR FULL."
             )
+            almost_full_alert_count[key] = total_ports
 
-    # Jika ODP yang sama muncul beberapa kali, gunakan status terbaru per nama.
+    # Simpan status dan jumlah port terbaru untuk pemeriksaan berikutnya.
     state["odp_status"] = current_odp_status
 
     # Validasi kolom customer.
@@ -2941,7 +2975,7 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
             customer_name = str(row.get("Nama", "")).strip()
             customer_id = str(row.get("CUST ID", "")).strip()
             customer_alerts.append(
-                "🆕 Pelanggan Baru Telah Terdaftar Pada DP "
+                "🆕 Pelanggan Baru Telah Terdaftar Pada "
                 f"ODP: {odp_name}\n"
             )
 
