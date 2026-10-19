@@ -4,6 +4,8 @@ import json
 import io
 import re
 import requests
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from functools import wraps
 
@@ -113,9 +115,9 @@ cached_customer_df = None
 # KONFIGURASI ALERT OTOMATIS
 # =========================================================
 # Alert dikirim ke kedua grup Telegram yang sudah dikonfigurasi.
-# Pemeriksaan dilakukan setiap 60 detik.
+# Pemeriksaan dilakukan setiap 10 detik.
 ALERT_STATE_FILE = os.path.join(BASE_DIR, "alert_state.json")
-ALERT_CHECK_INTERVAL = 60
+ALERT_CHECK_INTERVAL = 10
 
 # Semua kolom ini harus terisi agar baris dianggap sebagai
 # data customer baru yang sudah lengkap.
@@ -2783,6 +2785,7 @@ def load_alert_state():
     """Membaca status alert yang tersimpan agar tidak spam saat restart."""
     default_state = {
         "odp_status": {},
+        "odp_full_alert_date": {},
         "completed_customers": [],
         "initialized": False
     }
@@ -2794,6 +2797,7 @@ def load_alert_state():
         if not isinstance(saved, dict):
             return default_state
         saved.setdefault("odp_status", {})
+        saved.setdefault("odp_full_alert_date", {})
         saved.setdefault("completed_customers", [])
         saved.setdefault("initialized", False)
         return saved
@@ -2832,8 +2836,10 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
     - ODP FULL: 16 port terisi.
     - Customer baru: alert hanya setelah seluruh kolom wajib terisi.
     Status disimpan agar alert tidak dikirim ulang setiap interval.
+    Alert ODP FULL dibatasi maksimal satu kali per ODP per hari (WITA).
     """
     state = load_alert_state()
+    today_wita = datetime.now(ZoneInfo("Asia/Makassar")).date().isoformat()
 
     try:
         # Ambil data terbaru, bukan hanya mengandalkan cache.
@@ -2873,15 +2879,23 @@ async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
         # Pada pemeriksaan pertama, jadikan kondisi yang ada sebagai baseline
         # supaya bot tidak langsung mengirim alert massal untuk data lama.
         if not state.get("initialized", False):
+            # Jika ODP sudah FULL saat bot pertama dijalankan, tandai hari ini
+            # sebagai baseline agar tidak langsung mengirim alert pada putaran berikutnya.
+            if status == "FULL":
+                state["odp_full_alert_date"][key] = today_wita
             continue
 
-        if status == "FULL" and previous_status != "FULL":
-            odp_alerts.append(
-                "🚨 ALERT ODP FULL\n\n"
-                f"ODP: {odp_name}\n"
-                f"Port terisi: {total_ports}/16\n"
-                "Status: FULL — seluruh port telah terisi."
-            )
+        if status == "FULL":
+            # Maksimal satu alert FULL per nama ODP setiap hari (zona waktu WITA).
+            last_full_alert_date = state["odp_full_alert_date"].get(key)
+            if last_full_alert_date != today_wita:
+                odp_alerts.append(
+                    "🚨 ALERT ODP FULL\n\n"
+                    f"ODP: {odp_name}\n"
+                    f"Port terisi: {total_ports}/16\n"
+                    "Status: FULL — seluruh port telah terisi."
+                )
+                state["odp_full_alert_date"][key] = today_wita
         elif status == "HAMPIR_FULL" and previous_status not in ("HAMPIR_FULL", "FULL"):
             odp_alerts.append(
                 "⚠️ ALERT ODP HAMPIR FULL\n\n"
@@ -3145,11 +3159,11 @@ def main():
 
         app.job_queue.run_repeating(
             refresh_data,
-            interval=60,
+            interval=10,
             first=5
         )
 
-        # Cek status ODP dan kelengkapan customer setiap 60 detik.
+        # Cek status ODP dan kelengkapan customer setiap 10 detik.
         app.job_queue.run_repeating(
             auto_alert_job,
             interval=ALERT_CHECK_INTERVAL,
