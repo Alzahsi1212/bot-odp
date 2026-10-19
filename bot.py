@@ -36,7 +36,7 @@ from config import TOKEN, OWNER_ID
 # =========================================================
 
 ALLOWED_GROUP_IDS = [
-    -10037364571641212,  # ID grup lama
+    -1003736457164,  # ID grup lama
     -1001636360358,  # ID grup terbaru
 ]
 
