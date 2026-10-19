@@ -109,6 +109,24 @@ USERS_FILE = os.path.join(
 cached_df = None
 cached_customer_df = None
 
+# =========================================================
+# KONFIGURASI ALERT OTOMATIS
+# =========================================================
+# Alert dikirim ke kedua grup Telegram yang sudah dikonfigurasi.
+# Pemeriksaan dilakukan setiap 60 detik.
+ALERT_STATE_FILE = os.path.join(BASE_DIR, "alert_state.json")
+ALERT_CHECK_INTERVAL = 60
+
+# Semua kolom ini harus terisi agar baris dianggap sebagai
+# data customer baru yang sudah lengkap.
+CUSTOMER_REQUIRED_COLUMNS = [
+    "Tim", "Tanggal", "Nama", "BRIM ID", "CUST ID", "SN",
+    "Layanan", "Alamat", "PN", "ODP", "Port DP", "Kabel",
+    "Tikor", "Foto Rumah"
+]
+
+ODP_PORT_COLUMNS = [f"Port{i}" for i in range(1, 17)]
+
 
 # =========================================================
 # LOAD USERS
@@ -2704,6 +2722,238 @@ async def setlevel(
     )
 
 
+
+# =========================================================
+# ALERT OTOMATIS ODP DAN CUSTOMER
+# =========================================================
+
+def is_filled(value):
+    """True jika nilai kolom tidak kosong/placeholder."""
+    if value is None:
+        return False
+    value = str(value).strip()
+    return value.lower() not in ("", "nan", "none", "null", "-", "--", "n/a")
+
+
+def get_odp_name(row):
+    return str(row.get("Nama ODP", "")).strip()
+
+
+def get_odp_alert_status(row):
+    """
+    Mengembalikan status berdasarkan jumlah port terisi:
+    0-8 = normal, 9-15 = hampir full, 16 = full.
+    """
+    total = count_customer(row)
+    if total >= 16:
+        status = "FULL"
+    elif total >= 9:
+        status = "HAMPIR_FULL"
+    else:
+        status = "NORMAL"
+    return total, status
+
+
+def customer_row_is_complete(row):
+    """Baris customer dianggap lengkap jika semua kolom wajib terisi."""
+    for column in CUSTOMER_REQUIRED_COLUMNS:
+        if column not in row.index or not is_filled(row.get(column, "")):
+            return False
+    return True
+
+
+def customer_alert_key(row):
+    """
+    Identitas stabil customer agar perubahan format/urutan baris
+    tidak membuat alert yang sama dikirim berulang kali.
+    """
+    for column in ("CUST ID", "BRIM ID", "SN"):
+        value = str(row.get(column, "")).strip()
+        if is_filled(value):
+            return f"{column}:{value.upper()}"
+    # Fallback jika ID utama belum tersedia.
+    values = [
+        str(row.get(column, "")).strip().upper()
+        for column in ("Nama", "Tanggal", "ODP", "Port DP", "Alamat")
+    ]
+    return "FALLBACK:" + "|".join(values)
+
+
+def load_alert_state():
+    """Membaca status alert yang tersimpan agar tidak spam saat restart."""
+    default_state = {
+        "odp_status": {},
+        "completed_customers": [],
+        "initialized": False
+    }
+    try:
+        if not os.path.exists(ALERT_STATE_FILE):
+            return default_state
+        with open(ALERT_STATE_FILE, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        if not isinstance(saved, dict):
+            return default_state
+        saved.setdefault("odp_status", {})
+        saved.setdefault("completed_customers", [])
+        saved.setdefault("initialized", False)
+        return saved
+    except Exception as e:
+        print("[ALERT] Gagal membaca state alert:", e)
+        return default_state
+
+
+def save_alert_state(state):
+    """Simpan state secara atomik untuk mengurangi risiko file korup."""
+    temp_file = ALERT_STATE_FILE + ".tmp"
+    try:
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.replace(temp_file, ALERT_STATE_FILE)
+    except Exception as e:
+        print("[ALERT] Gagal menyimpan state alert:", e)
+
+
+async def send_alert_to_groups(context, message):
+    """Kirim alert ke semua grup yang dikonfigurasi."""
+    for group_id in ALLOWED_GROUP_IDS:
+        try:
+            await context.bot.send_message(
+                chat_id=group_id,
+                text=message
+            )
+        except Exception as e:
+            print(f"[ALERT] Gagal kirim ke grup {group_id}: {e}")
+
+
+async def auto_alert_job(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Mengecek sheet secara berkala.
+    - ODP hampir FULL: 9-15 port terisi.
+    - ODP FULL: 16 port terisi.
+    - Customer baru: alert hanya setelah seluruh kolom wajib terisi.
+    Status disimpan agar alert tidak dikirim ulang setiap interval.
+    """
+    state = load_alert_state()
+
+    try:
+        # Ambil data terbaru, bukan hanya mengandalkan cache.
+        odp_df = pd.read_csv(
+            URL,
+            dtype={column: str for column in ["PIN"] + ODP_PORT_COLUMNS}
+        ).fillna("")
+        customer_df = pd.read_csv(CUSTOMER_URL, dtype=str).fillna("")
+    except Exception as e:
+        print("[ALERT] Gagal mengambil data Google Sheet:", e)
+        return
+
+    # Validasi kolom ODP agar kesalahan nama kolom terlihat di log.
+    if "Nama ODP" not in odp_df.columns:
+        print("[ALERT] Kolom 'Nama ODP' tidak ditemukan di Sheet ODP.")
+        return
+
+    missing_ports = [column for column in ODP_PORT_COLUMNS if column not in odp_df.columns]
+    if missing_ports:
+        print("[ALERT] Kolom port tidak ditemukan:", ", ".join(missing_ports))
+        return
+
+    current_odp_status = {}
+    odp_alerts = []
+
+    for _, row in odp_df.iterrows():
+        odp_name = get_odp_name(row)
+        if not is_filled(odp_name):
+            continue
+
+        total_ports, status = get_odp_alert_status(row)
+        key = odp_name.strip().upper()
+        current_odp_status[key] = status
+
+        previous_status = state["odp_status"].get(key)
+
+        # Pada pemeriksaan pertama, jadikan kondisi yang ada sebagai baseline
+        # supaya bot tidak langsung mengirim alert massal untuk data lama.
+        if not state.get("initialized", False):
+            continue
+
+        if status == "FULL" and previous_status != "FULL":
+            odp_alerts.append(
+                "🚨 ALERT ODP FULL\n\n"
+                f"ODP: {odp_name}\n"
+                f"Port terisi: {total_ports}/16\n"
+                "Status: FULL — seluruh port telah terisi."
+            )
+        elif status == "HAMPIR_FULL" and previous_status not in ("HAMPIR_FULL", "FULL"):
+            odp_alerts.append(
+                "⚠️ ALERT ODP HAMPIR FULL\n\n"
+                f"ODP: {odp_name}\n"
+                f"Port terisi: {total_ports}/16\n"
+                "Status: HAMPIR FULL — port terisi 9 sampai 15."
+            )
+
+    # Jika ODP yang sama muncul beberapa kali, gunakan status terbaru per nama.
+    state["odp_status"] = current_odp_status
+
+    # Validasi kolom customer.
+    missing_customer_columns = [
+        column for column in CUSTOMER_REQUIRED_COLUMNS
+        if column not in customer_df.columns
+    ]
+    if missing_customer_columns:
+        print(
+            "[ALERT] Kolom customer wajib tidak ditemukan di Sheet Customer:",
+            ", ".join(missing_customer_columns)
+        )
+        # Tetap simpan status ODP yang berhasil diperiksa.
+        if not state.get("initialized", False):
+            state["initialized"] = True
+        save_alert_state(state)
+        for alert in odp_alerts:
+            await send_alert_to_groups(context, alert)
+        return
+
+    known_customers = set(state.get("completed_customers", []))
+    current_completed_customers = set()
+    customer_alerts = []
+
+    for _, row in customer_df.iterrows():
+        if not customer_row_is_complete(row):
+            continue
+
+        key = customer_alert_key(row)
+        current_completed_customers.add(key)
+
+        if state.get("initialized", False) and key not in known_customers:
+            odp_name = str(row.get("ODP", "")).strip()
+            customer_name = str(row.get("Nama", "")).strip()
+            customer_id = str(row.get("CUST ID", "")).strip()
+            customer_alerts.append(
+                "🆕 Pelanggan Baru Telah Terdaftar\n\n"
+                f"ODP: {odp_name}\n"
+                f"Nama pelanggan: {customer_name}\n"
+                f"CUST ID: {customer_id}"
+            )
+
+    # Pertahankan daftar customer yang pernah lengkap, termasuk jika baris
+    # kemudian dihapus dari sheet, supaya tidak alert ulang saat dimasukkan lagi.
+    state["completed_customers"] = sorted(known_customers | current_completed_customers)
+
+    # Kirim alert setelah semua perbandingan selesai.
+    for alert in odp_alerts:
+        await send_alert_to_groups(context, alert)
+
+    for alert in customer_alerts:
+        await send_alert_to_groups(context, alert)
+
+    if not state.get("initialized", False):
+        print(
+            "[ALERT] Baseline awal disimpan. Alert hanya dikirim untuk "
+            "perubahan baru setelah pemeriksaan pertama."
+        )
+        state["initialized"] = True
+
+    save_alert_state(state)
+
+
 # =========================================================
 # MAIN
 # =========================================================
@@ -2890,7 +3140,7 @@ def main():
 
 
     # =====================================================
-    # AUTO REFRESH
+    # AUTO REFRESH + ALERT OTOMATIS
     # =====================================================
 
     if app.job_queue:
@@ -2901,11 +3151,19 @@ def main():
             first=5
         )
 
+        # Cek status ODP dan kelengkapan customer setiap 60 detik.
+        app.job_queue.run_repeating(
+            auto_alert_job,
+            interval=ALERT_CHECK_INTERVAL,
+            first=10,
+            name="auto_alert_odp_customer"
+        )
+
     else:
 
         print(
             "⚠️ JobQueue tidak tersedia. "
-            "Install python-telegram-bot[job-queue]."
+            "Install dengan: pip install \"python-telegram-bot[job-queue]\""
         )
 
 
