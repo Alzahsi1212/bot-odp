@@ -2238,7 +2238,7 @@ async def button_handler(
             "Gunakan:\n"
             "/piu <PIU>\n\n"
             "Contoh:\n"
-            "/piu PIU01"
+            "/piu 0/1/10"
         )
 
         return
