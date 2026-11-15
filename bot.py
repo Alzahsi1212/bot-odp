@@ -21,7 +21,9 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
     TypeHandler,
-    ApplicationHandlerStop
+    ApplicationHandlerStop,
+    MessageHandler,
+    filters
 )
 
 from config import TOKEN, OWNER_ID
@@ -61,6 +63,17 @@ CUSTOMER_URL = (
     "2PACX-1vSJ534j22x_3ltjW7WSWXbH0PAAiDUiBCjlRWCFtVuYVBVx_1Scs3xkR5_QfewWeLK0tD5pfd9c63KU/"
     "pub?gid=2141022117&single=true&output=csv"
 )
+
+# URL Google Apps Script Web App untuk operasi tulis Sheet Customer.
+# Isi melalui Environment Variables di Railway: CUSTOMER_WRITE_URL dan CUSTOMER_WRITE_SECRET.
+CUSTOMER_WRITE_URL = os.getenv("CUSTOMER_WRITE_URL", "").strip()
+CUSTOMER_WRITE_SECRET = os.getenv("CUSTOMER_WRITE_SECRET", "").strip()
+
+CUSTOMER_COLUMNS = [
+    "Tim", "Tanggal", "Nama", "BRIM ID", "CUST ID", "SN",
+    "Layanan", "Alamat", "PN", "ODP", "Port DP", "Kabel",
+    "Tikor", "Foto Rumah"
+]
 
 
 # =========================================================
@@ -2116,6 +2129,253 @@ async def hist_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
+# KELOLA DATA CUSTOMER (KHUSUS OWNER)
+# =========================================================
+
+def parse_aktivasi_message(raw_text):
+    """Mengubah format pesan aktivasi menjadi kolom Sheet Customer."""
+    aliases = {
+        "TIM": "Tim", "TIM INSTALASI": "Tim", "TANGGAL": "Tanggal",
+        "NAMA": "Nama", "BRIM ID": "BRIM ID", "CUST ID": "CUST ID",
+        "SN": "SN", "LAYANAN": "Layanan", "ALAMAT": "Alamat",
+        "PN": "PN", "PHONE NUMBER": "PN", "NO HP": "PN",
+        "NO TELP": "PN", "NOMOR HP": "PN", "ODP": "ODP",
+        "KODE DP": "ODP", "PORT DP": "Port DP", "P KABEL": "Kabel",
+        "KABEL": "Kabel", "TIKOR CUST": "Tikor", "TIKOR": "Tikor",
+        "FOTO RUMAH": "Foto Rumah", "LINK FOTO RUMAH": "Foto Rumah"
+    }
+    result = {column: "" for column in CUSTOMER_COLUMNS}
+    for raw_line in str(raw_text).splitlines():
+        line = raw_line.strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = normalize(key.replace("*", "").strip())
+        value = value.strip()
+        target = aliases.get(key)
+        if target:
+            result[target] = value
+    # Tanggal dari format contoh: 12 November 2026 tetap disimpan apa adanya.
+    return result
+
+
+def customer_identity(row):
+    for key in ("CUST ID", "BRIM ID", "SN"):
+        value = str(row.get(key, "")).strip()
+        if value:
+            return key, value
+    return None, None
+
+
+def write_customer_to_sheet(action, row=None, identity_key=None, identity_value=None):
+    """Kirim operasi tambah/edit/hapus ke Google Apps Script Web App."""
+    if not CUSTOMER_WRITE_URL or not CUSTOMER_WRITE_SECRET:
+        raise RuntimeError(
+            "CUSTOMER_WRITE_URL/CUSTOMER_WRITE_SECRET belum diatur di Environment Variables."
+        )
+    payload = {
+        "secret": CUSTOMER_WRITE_SECRET,
+        "action": action,
+        "row": row or {},
+        "identity_key": identity_key or "CUST ID",
+        "identity_value": str(identity_value or "").strip()
+    }
+    response = requests.post(CUSTOMER_WRITE_URL, json=payload, timeout=30)
+    response.raise_for_status()
+    try:
+        result = response.json()
+    except ValueError:
+        raise RuntimeError("Respons Apps Script bukan JSON: " + response.text[:300])
+    if not result.get("ok"):
+        raise RuntimeError(result.get("error", "Operasi Google Sheet gagal."))
+    global cached_customer_df
+    cached_customer_df = None
+    return result
+
+
+def customer_manage_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Add Customer", callback_data="customer_add")],
+        [InlineKeyboardButton("✏️ Edit Customer", callback_data="customer_edit")],
+        [InlineKeyboardButton("🗑 Delete Customer", callback_data="customer_delete")],
+        [InlineKeyboardButton("⬅️ Kembali", callback_data="customer_manage_back")]
+    ])
+
+
+async def customer_manage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    user = query.from_user
+    await query.answer()
+    if not is_owner(user.id):
+        await query.edit_message_text("⛔️ Menu ini khusus owner.")
+        return
+    action = query.data
+    if action == "customer_manage":
+        await query.edit_message_text("👥 KELOLA DATA\n\nPilih tindakan:", reply_markup=customer_manage_keyboard())
+    elif action == "customer_manage_back":
+        await query.edit_message_text("Menu pengelolaan customer ditutup.")
+    elif action == "customer_add":
+        context.user_data["customer_mode"] = "add"
+        await query.edit_message_text(
+            "➕ TAMBAH CUSTOMER\n\nKirim/paste pesan aktivasi lengkap.\n"
+            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\n\n"
+            "Contoh label yang dikenali: TIM INSTALASI, TANGGAL, NAMA, BRIM ID, CUST ID, SN, LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\n\n"
+            "Ketik /batal untuk membatalkan."
+        )
+    elif action in ("customer_edit", "customer_delete"):
+        context.user_data["customer_mode"] = "edit_find" if action == "customer_edit" else "delete_find"
+        await query.edit_message_text(
+            ("✏️ EDIT CUSTOMER" if action == "customer_edit" else "🗑 DELETE CUSTOMER") +
+            "\n\nKirim CUST ID customer yang akan diproses.\nKetik /batal untuk membatalkan."
+        )
+
+
+async def customer_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("customer_mode", None)
+    context.user_data.pop("customer_pending", None)
+    await update.message.reply_text("✅ Proses pengelolaan customer dibatalkan.")
+
+
+async def customer_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    message = update.effective_message
+    if not user or not message or not message.text:
+        return
+    mode = context.user_data.get("customer_mode")
+    if not mode:
+        return
+    if not is_owner(user.id):
+        context.user_data.pop("customer_mode", None)
+        await message.reply_text("⛔️ Fitur ini khusus owner.")
+        return
+
+    raw = message.text.strip()
+    if raw.lower() == "/batal":
+        await customer_cancel(update, context)
+        return
+
+    try:
+        if mode == "add":
+            row = parse_aktivasi_message(raw)
+            if not row.get("CUST ID"):
+                await message.reply_text("❌ CUST ID wajib ada. Silakan kirim ulang data aktivasi.")
+                return
+            if not row.get("Nama"):
+                await message.reply_text("❌ NAMA wajib ada. Silakan kirim ulang data aktivasi.")
+                return
+            write_customer_to_sheet("add", row=row)
+            context.user_data.pop("customer_mode", None)
+            await message.reply_text(
+                "✅ DATA CUSTOMER BERHASIL DITAMBAHKAN\n\n"
+                f"Nama: {row['Nama']}\nCUST ID: {row['CUST ID']}\n"
+                f"PN: {row.get('PN') or '(belum diisi)'}\n"
+                f"Foto Rumah: {row.get('Foto Rumah') or '(belum diisi)'}"
+            )
+            return
+
+        if mode in ("edit_find", "delete_find"):
+            df = get_customer_data()
+            if "CUST ID" not in df.columns:
+                raise RuntimeError("Kolom CUST ID tidak ditemukan pada Sheet Customer.")
+            match = df[df["CUST ID"].astype(str).str.strip() == raw]
+            if match.empty:
+                await message.reply_text("❌ CUST ID tidak ditemukan. Kirim CUST ID yang benar atau /batal.")
+                return
+            idx = int(match.index[0])
+            old = {col: str(match.iloc[0].get(col, "") or "") for col in CUSTOMER_COLUMNS}
+            context.user_data["customer_pending"] = {"index": idx, "row": old, "identity": raw}
+            if mode == "delete_find":
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✅ Ya, hapus", callback_data="customer_delete_confirm")],
+                    [InlineKeyboardButton("❌ Batal", callback_data="customer_delete_cancel")]
+                ])
+                await message.reply_text(
+                    f"⚠️ KONFIRMASI HAPUS CUSTOMER\n\nNama: {old.get('Nama', '-')}\n"
+                    f"CUST ID: {raw}\nBRIM ID: {old.get('BRIM ID', '-')}\n\n"
+                    "Data akan dihapus permanen dari Sheet Customer.", reply_markup=keyboard
+                )
+                context.user_data["customer_mode"] = "delete_confirm"
+            else:
+                context.user_data["customer_mode"] = "edit_data"
+                await message.reply_text(
+                    "✏️ DATA CUSTOMER DITEMUKAN\n\n"
+                    f"Nama: {old.get('Nama', '-')}\nCUST ID: {raw}\n\n"
+                    "Kirim ulang data dalam format aktivasi. Kolom yang tidak dicantumkan "
+                    "(termasuk PN/Foto Rumah) akan mempertahankan nilai lama.\n"
+                    "Ketik /batal untuk membatalkan."
+                )
+            return
+
+        if mode == "edit_data":
+            pending = context.user_data.get("customer_pending")
+            if not pending:
+                raise RuntimeError("Sesi edit tidak ditemukan. Mulai ulang dari menu customer.")
+            updated = dict(pending["row"])
+            parsed = parse_aktivasi_message(raw)
+            # Hanya timpa kolom yang memang ada di pesan; kosongkan PN/Foto Rumah hanya jika labelnya dikirim eksplisit.
+            labels = {
+                "TIM", "TIM INSTALASI", "TANGGAL", "NAMA", "BRIM ID", "CUST ID", "SN", "LAYANAN", "ALAMAT",
+                "PN", "PHONE NUMBER", "NO HP", "NO TELP", "NOMOR HP", "ODP", "KODE DP", "PORT DP", "P KABEL", "KABEL",
+                "TIKOR CUST", "TIKOR", "FOTO RUMAH", "LINK FOTO RUMAH"
+            }
+            explicit = set()
+            for line in raw.splitlines():
+                if ":" in line:
+                    k = normalize(line.split(":", 1)[0].replace("*", "").strip())
+                    if k in labels:
+                        explicit.add(k)
+            alias_to_col = {
+                "TIM":"Tim", "TIM INSTALASI":"Tim", "TANGGAL":"Tanggal", "NAMA":"Nama", "BRIM ID":"BRIM ID",
+                "CUST ID":"CUST ID", "SN":"SN", "LAYANAN":"Layanan", "ALAMAT":"Alamat", "PN":"PN",
+                "PHONE NUMBER":"PN", "NO HP":"PN", "NO TELP":"PN", "NOMOR HP":"PN", "ODP":"ODP", "KODE DP":"ODP",
+                "PORT DP":"Port DP", "P KABEL":"Kabel", "KABEL":"Kabel", "TIKOR CUST":"Tikor", "TIKOR":"Tikor",
+                "FOTO RUMAH":"Foto Rumah", "LINK FOTO RUMAH":"Foto Rumah"
+            }
+            for label in explicit:
+                col = alias_to_col[label]
+                updated[col] = parsed[col]
+            if not updated.get("CUST ID"):
+                raise RuntimeError("CUST ID tidak boleh kosong.")
+            write_customer_to_sheet("edit", row=updated, identity_key="CUST ID", identity_value=pending["identity"])
+            context.user_data.pop("customer_mode", None)
+            context.user_data.pop("customer_pending", None)
+            await message.reply_text("✅ DATA CUSTOMER BERHASIL DIPERBARUI.\n\nPerubahan sudah dikirim ke Google Sheet.")
+            return
+    except Exception as e:
+        print("[CUSTOMER MANAGE]", repr(e))
+        await message.reply_text(f"❌ Gagal memproses data customer:\n{e}")
+
+
+async def customer_delete_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+    if not is_owner(query.from_user.id):
+        await query.edit_message_text("⛔️ Khusus owner.")
+        return
+    if query.data == "customer_delete_cancel":
+        context.user_data.pop("customer_mode", None)
+        context.user_data.pop("customer_pending", None)
+        await query.edit_message_text("❎ Penghapusan dibatalkan.")
+        return
+    pending = context.user_data.get("customer_pending")
+    if not pending:
+        await query.edit_message_text("❌ Sesi hapus sudah tidak tersedia. Ulangi dari menu.")
+        return
+    try:
+        write_customer_to_sheet("delete", identity_key="CUST ID", identity_value=pending["identity"])
+        context.user_data.pop("customer_mode", None)
+        context.user_data.pop("customer_pending", None)
+        await query.edit_message_text("✅ DATA CUSTOMER BERHASIL DIHAPUS DARI GOOGLE SHEET.")
+    except Exception as e:
+        print("[CUSTOMER DELETE]", repr(e))
+        await query.edit_message_text(f"❌ Gagal menghapus customer:\n{e}")
+
+
+# =========================================================
 # MENU
 # =========================================================
 
@@ -2156,6 +2416,11 @@ async def menu(
         ]
 
     ]
+
+    if is_owner(update.effective_user.id):
+        keyboard.append([
+            InlineKeyboardButton("👥 Kelola Customer (Owner)", callback_data="customer_manage")
+        ])
 
 
     await update.message.reply_text(
@@ -2267,6 +2532,13 @@ async def button_handler(
             "/hist 48575443XXXXXX"
         )
 
+        return
+
+    if query.data == "customer_manage":
+        if not is_owner(user.id):
+            await query.edit_message_text("⛔️ Menu ini khusus owner.")
+            return
+        await query.edit_message_text("👥 KELOLA DATA CUSTOMER\n\nPilih tindakan:", reply_markup=customer_manage_keyboard())
         return
 
 
@@ -3145,6 +3417,13 @@ def main():
         )
     )
 
+    app.add_handler(
+        CommandHandler(
+            "batal",
+            customer_cancel
+        )
+    )
+
 
     # =====================================================
     # HIST CALLBACK
@@ -3172,6 +3451,24 @@ def main():
             pattern=r"^hist_page:"
         )
     )
+
+
+    # =====================================================
+    # CUSTOMER MANAGEMENT CALLBACK (OWNER ONLY)
+    # =====================================================
+
+    app.add_handler(CallbackQueryHandler(
+        customer_manage_callback,
+        pattern=r"^customer_(?:add|edit|delete|manage|manage_back)$"
+    ))
+
+    app.add_handler(CallbackQueryHandler(
+        customer_delete_confirm_callback,
+        pattern=r"^customer_delete_(?:confirm|cancel)$"
+    ))
+
+    # Menangkap balasan teks untuk proses add/edit/delete customer.
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, customer_text_handler))
 
 
     # =====================================================
