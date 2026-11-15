@@ -66,8 +66,8 @@ CUSTOMER_URL = (
 
 # URL Google Apps Script Web App untuk operasi tulis Sheet Customer.
 # Isi melalui Environment Variables di Railway: CUSTOMER_WRITE_URL dan CUSTOMER_WRITE_SECRET.
-CUSTOMER_WRITE_URL = os.getenv("CUSTOMER_WRITE_URL", "").strip()
-CUSTOMER_WRITE_SECRET = os.getenv("CUSTOMER_WRITE_SECRET", "").strip()
+CUSTOMER_WRITE_URL = "https://script.google.com/macros/s/AKfycbwDBCMAfXknlYDlIeJmVhEeAGlMhuaVRUn0OIo6X6NSjZWSC0mHYKJlwuolqL8Gm3D0/exec"
+CUSTOMER_WRITE_SECRET = "bumibulat12"
 
 CUSTOMER_COLUMNS = [
     "Tim", "Tanggal", "Nama", "BRIM ID", "CUST ID", "SN",
@@ -2129,7 +2129,7 @@ async def hist_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
-# KELOLA DATA CUSTOMER (KHUSUS OWNER)
+# KELOLA DATA
 # =========================================================
 
 def parse_aktivasi_message(raw_text):
