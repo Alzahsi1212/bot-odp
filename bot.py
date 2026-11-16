@@ -652,6 +652,14 @@ def normalize(text):
     ).strip().upper()
 
 
+def normalize_phone(value):
+    """Normalisasi PN: hanya digit; awalan 0 dan 62 dianggap setara."""
+    digits = re.sub(r"\D", "", str(value or ""))
+    if digits.startswith("0"):
+        digits = "62" + digits[1:]
+    return digits
+
+
 # =========================================================
 # HITUNG JUMLAH CUSTOMER ODP
 # =========================================================
@@ -856,7 +864,10 @@ async def start(
         "/info <ODP>\n"
         "/cari <RK>\n"
         "/piu <PIU>\n"
-        "/hist <Nama/SN/BRIM ID/CUST ID>"
+        "/hist <Nama/SN/BRIM ID/CUST ID/PN>\\n"
+        "/addcust - tambah customer (owner)\\n"
+        "/editcust - edit customer (owner)\\n"
+        "/delcust - hapus customer (owner)"
     )
 
 
@@ -1278,70 +1289,28 @@ async def piu(
 # BUILD HIST RESULT
 # =========================================================
 
-def build_hist_result(
-    df,
-    keyword
-):
+def build_hist_result(df, keyword):
+    keyword_normalized = normalize(keyword)
+    keyword_phone = normalize_phone(keyword)
 
-    keyword_normalized = normalize(
-        keyword
+    mask_nama = df["Nama"].astype(str).str.upper().str.contains(
+        keyword_normalized, regex=False, na=False
     )
+    mask_sn = df["SN"].astype(str).str.strip().str.upper() == keyword_normalized
+    mask_brim = df["BRIM ID"].astype(str).str.strip().str.upper() == keyword_normalized
+    mask_cust = df["CUST ID"].astype(str).str.strip().str.upper() == keyword_normalized
 
-
-    mask_nama = (
-        df["Nama"]
-        .astype(str)
-        .str.upper()
-        .str.contains(
-            keyword_normalized,
-            regex=False,
-            na=False
+    # Abaikan +, spasi, dan tanda hubung; PN mendukung pencarian sebagian nomor.
+    if "PN" in df.columns and keyword_phone:
+        mask_pn = df["PN"].apply(
+            lambda value: keyword_phone in normalize_phone(value)
         )
-    )
+    else:
+        mask_pn = pd.Series(False, index=df.index)
+
+    return df[mask_nama | mask_sn | mask_brim | mask_cust | mask_pn]
 
 
-    mask_sn = (
-        df["SN"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        ==
-        keyword_normalized
-    )
-
-
-    mask_brim = (
-        df["BRIM ID"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        ==
-        keyword_normalized
-    )
-
-
-    mask_cust = (
-        df["CUST ID"]
-        .astype(str)
-        .str.strip()
-        .str.upper()
-        ==
-        keyword_normalized
-    )
-
-
-    return df[
-        mask_nama
-        |
-        mask_sn
-        |
-        mask_brim
-        |
-        mask_cust
-    ]
-
-
-# =========================================================
 # HIST SESSION / PAGINATION
 # =========================================================
 
@@ -1416,12 +1385,16 @@ async def hist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Nama → sebagian nama\n"
             "• SN → sama persis\n"
             "• BRIM ID → sama persis\n"
-            "• CUST ID → sama persis\n\n"
+            "• CUST ID → sama persis\n"
+            "• PN → seluruh atau sebagian nomor telepon/WhatsApp\n"
+            "  Spasi, +, dan tanda hubung diabaikan; +62 dan 62 dapat digunakan.\n\n"
             "Contoh:\n"
             "/hist budi\n"
             "/hist ZTE123456\n"
             "/hist BRM123456\n"
-            "/hist CUST123456"
+            "/hist CUST123456\n"
+            "/hist +628123456789\n"
+            "/hist 8123456"
         )
         return
 
@@ -1437,7 +1410,7 @@ async def hist(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("❌ Gagal membaca data Customer dari Google Sheet.")
         return
 
-    wajib = ["Nama", "SN", "BRIM ID", "CUST ID", "Foto Rumah"]
+    wajib = ["Nama", "SN", "BRIM ID", "CUST ID", "Foto Rumah", "PN"]
     missing = [c for c in wajib if c not in df.columns]
     if missing:
         await message.reply_text(
@@ -2232,6 +2205,49 @@ async def customer_manage_callback(update: Update, context: ContextTypes.DEFAULT
         )
 
 
+async def start_customer_command(update: Update, context: ContextTypes.DEFAULT_TYPE, mode: str):
+    """Memulai alur kelola customer melalui command Telegram."""
+    user = update.effective_user
+    message = update.effective_message
+    if not user or not message:
+        return
+    if not is_owner(user.id):
+        await message.reply_text("⛔️ Fitur kelola customer hanya dapat digunakan oleh owner.")
+        return
+
+    context.user_data.pop("customer_pending", None)
+    context.user_data["customer_mode"] = mode
+
+    if mode == "add":
+        await message.reply_text(
+            "➕ TAMBAH CUSTOMER\\n\\n"
+            "Kirim/paste pesan aktivasi lengkap.\\n"
+            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\\n\\n"
+            "Contoh label: TIM INSTALASI, TANGGAL, NAMA, BRIM ID, CUST ID, SN, "
+            "LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\\n\\n"
+            "Ketik /batal untuk membatalkan."
+        )
+    else:
+        title = "✏️ EDIT CUSTOMER" if mode == "edit_find" else "🗑 HAPUS CUSTOMER"
+        await message.reply_text(
+            f"{title}\\n\\n"
+            "Kirim CUST ID customer yang akan diproses.\\n"
+            "Ketik /batal untuk membatalkan."
+        )
+
+
+async def addcust(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start_customer_command(update, context, "add")
+
+
+async def editcust(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start_customer_command(update, context, "edit_find")
+
+
+async def delcust(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start_customer_command(update, context, "delete_find")
+
+
 async def customer_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("customer_mode", None)
     context.user_data.pop("customer_pending", None)
@@ -2526,10 +2542,12 @@ async def button_handler(
         await query.edit_message_text(
             "🔎 HISTORY CUSTOMER\n\n"
             "Gunakan:\n"
-            "/hist <Nama/SN/Cust ID/BRIM ID>\n\n"
-            "Contoh:\n"
-            "/hist budi\n"
-            "/hist 48575443XXXXXX"
+            "/hist <Nama/SN/Cust ID/BRIM ID/PN>\\n\\n"
+            "PN bisa dicari dengan seluruh/sebagian nomor; spasi, +, dan tanda hubung diabaikan. +62 dan 62 setara.\\n\\n"
+            "Contoh:\\n"
+            "/hist budi\\n"
+            "/hist +628123456789\\n"
+            "/hist 8123456"
         )
 
         return
@@ -3368,6 +3386,10 @@ def main():
             hist
         )
     )
+
+    app.add_handler(CommandHandler("addcust", addcust))
+    app.add_handler(CommandHandler("editcust", editcust))
+    app.add_handler(CommandHandler("delcust", delcust))
 
 
     app.add_handler(
