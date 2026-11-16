@@ -879,9 +879,9 @@ async def start(
         "/info <ODP>\n"
         "/cari <RK>\n"
         "/piu <PIU>\n"
-        "/hist <Nama/SN/BRIM ID/CUST ID/PN>\\n"
-        "/addcust - tambah customer (owner)\\n"
-        "/editcust - edit customer (owner)\\n"
+        "/hist <Nama/SN/BRIM ID/CUST ID/PN>\n"
+        "/addcust - tambah customer (owner)\n"
+        "/editcust - edit customer (owner)\n"
         "/delcust - hapus customer (owner)"
     )
 
@@ -2212,18 +2212,18 @@ async def customer_manage_callback(update: Update, context: ContextTypes.DEFAULT
     elif action == "customer_add":
         context.user_data["customer_mode"] = "add"
         await query.edit_message_text(
-            "➕ TAMBAH CUSTOMER\\n\\n"
-            "Kirim/paste pesan aktivasi lengkap.\\n"
-            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\\n\\n"
+            "➕ TAMBAH CUSTOMER\n\n"
+            "Kirim/paste pesan aktivasi lengkap.\n"
+            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\n\n"
             "Contoh label: TIM INSTALASI, TANGGAL, NAMA, BRIM ID, CUST ID, SN, "
-            "LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\\n\\n"
+            "LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\n\n"
             "Ketik /batal untuk membatalkan."
         )
     elif action in ("customer_edit", "customer_delete"):
         context.user_data["customer_mode"] = "edit_find" if action == "customer_edit" else "delete_find"
         await query.edit_message_text(
             ("✏️ EDIT CUSTOMER" if action == "customer_edit" else "🗑 DELETE CUSTOMER") +
-            "Kirim CUST ID customer yang akan diproses.\\n"
+            "Kirim CUST ID customer yang akan diproses.\n"
             "Ketik /batal untuk membatalkan."
         )
 
@@ -2243,18 +2243,18 @@ async def start_customer_command(update: Update, context: ContextTypes.DEFAULT_T
 
     if mode == "add":
         await message.reply_text(
-            "➕ TAMBAH CUSTOMER\\n\\n"
-            "Kirim/paste pesan aktivasi lengkap.\\n"
-            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\\n\\n"
+            "➕ TAMBAH CUSTOMER\n\n"
+            "Kirim/paste pesan aktivasi lengkap.\n"
+            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\n\n"
             "Contoh label: TIM INSTALASI, TANGGAL, NAMA, BRIM ID, CUST ID, SN, "
-            "LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\\n\\n"
+            "LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\n\n"
             "Ketik /batal untuk membatalkan."
         )
     else:
         title = "✏️ EDIT CUSTOMER" if mode == "edit_find" else "🗑 HAPUS CUSTOMER"
         await message.reply_text(
-            f"{title}\\n\\n"
-            "Kirim CUST ID customer yang akan diproses.\\n"
+            f"{title}\n\n"
+            "Kirim CUST ID customer yang akan diproses.\n"
             "Ketik /batal untuk membatalkan."
         )
 
@@ -2565,11 +2565,11 @@ async def button_handler(
         await query.edit_message_text(
             "🔎 HISTORY CUSTOMER\n\n"
             "Gunakan:\n"
-            "/hist <Nama/SN/Cust ID/BRIM ID/PN>\\n\\n"
-            "PN bisa dicari dengan seluruh/sebagian nomor; spasi, +, dan tanda hubung diabaikan. +62 dan 62 setara.\\n\\n"
-            "Contoh:\\n"
-            "/hist budi\\n"
-            "/hist +628123456789\\n"
+            "/hist <Nama/SN/Cust ID/BRIM ID/PN>\n\n"
+            "PN bisa dicari dengan seluruh/sebagian nomor; spasi, +, dan tanda hubung diabaikan. +62 dan 62 setara.\n\n"
+            "Contoh:\n"
+            "/hist budi\n"
+            "/hist +628123456789\n"
             "/hist 8123456"
         )
 
