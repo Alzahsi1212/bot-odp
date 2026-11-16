@@ -12,7 +12,8 @@ from functools import wraps
 from telegram import (
     Update,
     InlineKeyboardButton,
-    InlineKeyboardMarkup
+    InlineKeyboardMarkup,
+    InputMediaPhoto
 )
 
 from telegram.ext import (
@@ -519,7 +520,25 @@ async def chat_access_guard(
     if is_owner(user.id):
         return
 
-    # User biasa hanya boleh di grup yang ditentukan.
+    level = get_user_level(user.id)
+
+    # User Level 2 boleh membuka sesi /inputdatek melalui japri.
+    # Di private chat, update lain tetap diblokir kecuali:
+    # /inputdatek, /selesai, /batal, atau foto saat sesi aktif.
+    if chat.type == "private" and level >= 2:
+        message = update.effective_message
+        text_value = (message.text or "").strip().split() if message and message.text else []
+        command = text_value[0].split("@", 1)[0].lower() if text_value else ""
+        datek_active = bool(context.user_data.get("inputdatek_active"))
+
+        allowed_private_command = command in {"/inputdatek", "/selesai", "/batal"}
+        allowed_private_photo = bool(message and message.photo and datek_active)
+
+        if allowed_private_command or allowed_private_photo:
+            return
+
+    # User selain owner hanya dapat menggunakan bot di grup yang
+    # diizinkan, kecuali akses terbatas /inputdatek di private di atas.
     if chat.id not in ALLOWED_GROUP_IDS:
         print(
             f"[CHAT BLOCKED] "
@@ -528,9 +547,6 @@ async def chat_access_guard(
             f"CHAT_ID={chat.id} "
             f"CHAT_TYPE={chat.type}"
         )
-
-        # Jangan kirim pesan penolakan agar bot benar-benar
-        # diam di private chat/grup lain.
         raise ApplicationHandlerStop
 
 
@@ -882,7 +898,8 @@ async def start(
         "/hist <Nama/SN/BRIM ID/CUST ID/PN>\n"
         "/addcust - tambah customer (owner)\n"
         "/editcust - edit customer (owner)\n"
-        "/delcust - hapus customer (owner)"
+        "/delcust - hapus customer (owner)\n"
+        "/inputdatek - kirim foto dokumentasi ke topic DATEK (owner/level 2)"
     )
 
 
@@ -2272,9 +2289,33 @@ async def delcust(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def customer_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.pop("customer_mode", None)
-    context.user_data.pop("customer_pending", None)
-    await update.message.reply_text("✅ Proses pengelolaan customer dibatalkan.")
+    message = update.effective_message
+    if not message:
+        return
+
+    cancelled = False
+
+    if context.user_data.pop("inputdatek_active", None):
+        # Hapus album yang belum sempat diteruskan.
+        pending = context.user_data.pop("inputdatek_pending_albums", {})
+        for media_group_id in pending:
+            job_name = f"datek_album_{update.effective_user.id}_{media_group_id}"
+            for job in context.job_queue.get_jobs_by_name(job_name) if context.job_queue else []:
+                job.schedule_removal()
+        sent = int(context.user_data.pop("inputdatek_sent", 0))
+        await message.reply_text(
+            "❎ Sesi input DATEK dibatalkan.\n"
+            f"Total foto yang sudah berhasil dikirim: {sent}"
+        )
+        cancelled = True
+
+    if context.user_data.pop("customer_mode", None):
+        context.user_data.pop("customer_pending", None)
+        await message.reply_text("✅ Proses pengelolaan customer dibatalkan.")
+        cancelled = True
+
+    if not cancelled:
+        await message.reply_text("ℹ️ Tidak ada proses yang sedang aktif.")
 
 
 async def customer_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2412,6 +2453,180 @@ async def customer_delete_confirm_callback(update: Update, context: ContextTypes
     except Exception as e:
         print("[CUSTOMER DELETE]", repr(e))
         await query.edit_message_text(f"❌ Gagal menghapus customer:\n{e}")
+
+
+# =========================================================
+# INPUT DOKUMENTASI TEKNISI (DATEK)
+# =========================================================
+
+DATEK_TARGET_CHAT_ID = -1003736457164
+DATEK_TARGET_THREAD_ID = 103
+
+
+async def inputdatek(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Memulai sesi pengiriman album foto dokumentasi ke topic DATEK."""
+    user = update.effective_user
+    chat = update.effective_chat
+    message = update.effective_message
+
+    if not user or not chat or not message:
+        return
+
+    if not (is_owner(user.id) or is_level2(user.id)):
+        await message.reply_text("⛔️ Perintah /inputdatek hanya dapat digunakan oleh owner dan user Level 2.")
+        return
+
+    # Owner boleh memulai dari mana saja; user Level 2 wajib japri bot.
+    if not is_owner(user.id) and chat.type != "private":
+        await message.reply_text(
+            "⛔️ User Level 2 hanya dapat menggunakan /inputdatek melalui chat pribadi (japri) bot."
+        )
+        return
+
+    context.user_data["inputdatek_active"] = True
+    context.user_data["inputdatek_sent"] = 0
+    context.user_data["inputdatek_pending_albums"] = {}
+
+    await message.reply_text(
+        "📷 INPUT DOKUMENTASI DATEK AKTIF\n\n"
+        "Silakan kirim beberapa foto sekaligus sebagai satu album (maksimal 10 foto per album). "
+        "Caption/keterangan akan ikut dikirim bersama album.\n\n"
+        "Bot akan meneruskan album utuh ke topic DATEK setelah semua foto diterima.\n"
+        "Ketik /selesai jika sudah selesai, atau /batal untuk membatalkan sesi."
+    )
+
+
+async def flush_datek_album(context: ContextTypes.DEFAULT_TYPE, user_id: int, media_group_id: str):
+    """Mengirim satu album yang sudah terkumpul ke topic DATEK."""
+    user_data = context.application.user_data.get(user_id, {})
+    pending = user_data.get("inputdatek_pending_albums", {})
+    album = pending.pop(str(media_group_id), None)
+    if not album:
+        return 0
+
+    media = []
+    for item in album:
+        media.append(InputMediaPhoto(
+            media=item["file_id"],
+            caption=item.get("caption"),
+            caption_entities=item.get("caption_entities")
+        ))
+
+    try:
+        if len(media) == 1:
+            item = album[0]
+            await context.bot.send_photo(
+                chat_id=DATEK_TARGET_CHAT_ID,
+                photo=item["file_id"],
+                caption=item.get("caption"),
+                caption_entities=item.get("caption_entities"),
+                message_thread_id=DATEK_TARGET_THREAD_ID
+            )
+        else:
+            await context.bot.send_media_group(
+                chat_id=DATEK_TARGET_CHAT_ID,
+                media=media,
+                message_thread_id=DATEK_TARGET_THREAD_ID
+            )
+
+        count = len(album)
+        user_data["inputdatek_sent"] = int(user_data.get("inputdatek_sent", 0)) + count
+        origin_chat_id = album[0].get("origin_chat_id")
+        if origin_chat_id:
+            await context.bot.send_message(
+                chat_id=origin_chat_id,
+                text=f"✅ Album DATEK berhasil dikirim utuh ke topic.\nJumlah foto dalam album: {count}"
+            )
+        return count
+    except Exception as e:
+        print(f"[INPUTDATEK] Gagal mengirim album user={user_id}: {e}")
+        origin_chat_id = album[0].get("origin_chat_id")
+        if origin_chat_id:
+            await context.bot.send_message(
+                chat_id=origin_chat_id,
+                text="❌ Album DATEK gagal dikirim. Pastikan bot menjadi anggota grup dan memiliki izin mengirim media pada topic tujuan."
+            )
+        return 0
+
+
+async def inputdatek_album_job(context: ContextTypes.DEFAULT_TYPE):
+    data = context.job.data
+    await flush_datek_album(context, data["user_id"], data["media_group_id"])
+
+
+async def inputdatek_photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mengumpulkan foto berdasarkan media_group_id lalu meneruskannya sebagai satu album."""
+    user = update.effective_user
+    chat = update.effective_chat
+    message = update.effective_message
+
+    if not user or not chat or not message or not message.photo:
+        return
+
+    if not context.user_data.get("inputdatek_active"):
+        return
+
+    if not is_owner(user.id) and chat.type != "private":
+        await message.reply_text(
+            "⛔️ Pengiriman DATEK untuk user Level 2 hanya diperbolehkan melalui japri bot."
+        )
+        return
+
+    if not context.job_queue:
+        await message.reply_text("❌ Fitur pengiriman album membutuhkan JobQueue. Pastikan paket python-telegram-bot[job-queue] terpasang di Railway.")
+        return
+
+    # Telegram mengirim setiap item album sebagai update terpisah dengan media_group_id sama.
+    media_group_id = str(message.media_group_id or f"single_{message.message_id}")
+    pending = context.user_data.setdefault("inputdatek_pending_albums", {})
+    album = pending.setdefault(media_group_id, [])
+    album.append({
+        "file_id": message.photo[-1].file_id,
+        "caption": message.caption,
+        "caption_entities": message.caption_entities,
+        "origin_chat_id": chat.id
+    })
+
+    # Reset timer setiap foto masuk agar album dikirim setelah seluruh item diterima.
+    job_name = f"datek_album_{user.id}_{media_group_id}"
+    for job in context.job_queue.get_jobs_by_name(job_name):
+        job.schedule_removal()
+    context.job_queue.run_once(
+        inputdatek_album_job,
+        when=2.0,
+        data={"user_id": user.id, "media_group_id": media_group_id},
+        name=job_name
+    )
+
+
+async def inputdatek_finish(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mengirim sisa album yang tertunda lalu mengakhiri sesi input DATEK."""
+    message = update.effective_message
+    user = update.effective_user
+    if not message or not user:
+        return
+
+    if not context.user_data.get("inputdatek_active"):
+        await message.reply_text("ℹ️ Tidak ada sesi /inputdatek yang sedang aktif.")
+        return
+
+    # Paksa kirim album yang masih menunggu timer.
+    pending = context.user_data.get("inputdatek_pending_albums", {})
+    for media_group_id in list(pending.keys()):
+        job_name = f"datek_album_{user.id}_{media_group_id}"
+        for job in context.job_queue.get_jobs_by_name(job_name) if context.job_queue else []:
+            job.schedule_removal()
+        await flush_datek_album(context, user.id, media_group_id)
+
+    sent = int(context.user_data.get("inputdatek_sent", 0))
+    context.user_data.pop("inputdatek_active", None)
+    context.user_data.pop("inputdatek_sent", None)
+    context.user_data.pop("inputdatek_pending_albums", None)
+
+    await message.reply_text(
+        "✅ SESI INPUT DATEK SELESAI\n\n"
+        f"Total foto berhasil dikirim: {sent}"
+    )
 
 
 # =========================================================
@@ -3413,6 +3628,8 @@ def main():
     app.add_handler(CommandHandler("addcust", addcust))
     app.add_handler(CommandHandler("editcust", editcust))
     app.add_handler(CommandHandler("delcust", delcust))
+    app.add_handler(CommandHandler("inputdatek", inputdatek))
+    app.add_handler(CommandHandler("selesai", inputdatek_finish))
 
 
     app.add_handler(
@@ -3511,6 +3728,9 @@ def main():
         customer_delete_confirm_callback,
         pattern=r"^customer_delete_(?:confirm|cancel)$"
     ))
+
+    # Foto yang dikirim selama sesi /inputdatek dikumpulkan per album lalu diteruskan utuh.
+    app.add_handler(MessageHandler(filters.PHOTO, inputdatek_photo_handler))
 
     # Menangkap balasan teks untuk proses add/edit/delete customer.
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, customer_text_handler))
