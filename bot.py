@@ -653,11 +653,26 @@ def normalize(text):
 
 
 def normalize_phone(value):
-    """Normalisasi PN: hanya digit; awalan 0 dan 62 dianggap setara."""
+    """Normalisasi satu nomor PN: hanya digit; awalan 0 dan 62 dianggap setara."""
     digits = re.sub(r"\D", "", str(value or ""))
     if digits.startswith("0"):
         digits = "62" + digits[1:]
     return digits
+
+
+def normalize_phone_list(value):
+    """Pisahkan beberapa nomor PN dalam satu sel, lalu normalisasi satu per satu."""
+    if value is None:
+        return []
+
+    raw = str(value).strip()
+    if not raw or raw.lower() in {"nan", "none", "null"}:
+        return []
+
+    # PN dapat berisi beberapa nomor yang dipisahkan /, koma, titik koma,
+    # baris baru, atau kata 'atau'. Jangan gabungkan digit antar nomor.
+    parts = re.split(r"\s*(?:/|,|;|\n|\batau\b)\s*", raw, flags=re.IGNORECASE)
+    return [number for part in parts if (number := normalize_phone(part))]
 
 
 # =========================================================
@@ -1300,10 +1315,15 @@ def build_hist_result(df, keyword):
     mask_brim = df["BRIM ID"].astype(str).str.strip().str.upper() == keyword_normalized
     mask_cust = df["CUST ID"].astype(str).str.strip().str.upper() == keyword_normalized
 
-    # Abaikan +, spasi, dan tanda hubung; PN mendukung pencarian sebagian nomor.
+    # Abaikan +, spasi, dan tanda hubung. Satu sel PN dapat berisi
+    # beberapa nomor (contoh: 0852... / 0852...), sehingga setiap nomor
+    # harus dinormalisasi dan dicocokkan secara terpisah.
     if "PN" in df.columns and keyword_phone:
         mask_pn = df["PN"].apply(
-            lambda value: keyword_phone in normalize_phone(value)
+            lambda value: any(
+                keyword_phone in phone
+                for phone in normalize_phone_list(value)
+            )
         )
     else:
         mask_pn = pd.Series(False, index=df.index)
@@ -2192,16 +2212,19 @@ async def customer_manage_callback(update: Update, context: ContextTypes.DEFAULT
     elif action == "customer_add":
         context.user_data["customer_mode"] = "add"
         await query.edit_message_text(
-            "➕ TAMBAH CUSTOMER\n\nKirim/paste pesan aktivasi lengkap.\n"
-            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\n\n"
-            "Contoh label yang dikenali: TIM INSTALASI, TANGGAL, NAMA, BRIM ID, CUST ID, SN, LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\n\n"
+            "➕ TAMBAH CUSTOMER\\n\\n"
+            "Kirim/paste pesan aktivasi lengkap.\\n"
+            "Kolom PN dan Foto Rumah boleh dikosongkan dahulu; keduanya dapat diisi lewat Edit Customer.\\n\\n"
+            "Contoh label: TIM INSTALASI, TANGGAL, NAMA, BRIM ID, CUST ID, SN, "
+            "LAYANAN, ALAMAT, TIKOR CUST, KODE DP, PORT DP, P KABEL, PN, FOTO RUMAH.\\n\\n"
             "Ketik /batal untuk membatalkan."
         )
     elif action in ("customer_edit", "customer_delete"):
         context.user_data["customer_mode"] = "edit_find" if action == "customer_edit" else "delete_find"
         await query.edit_message_text(
             ("✏️ EDIT CUSTOMER" if action == "customer_edit" else "🗑 DELETE CUSTOMER") +
-            "\n\nKirim CUST ID customer yang akan diproses.\nKetik /batal untuk membatalkan."
+            "Kirim CUST ID customer yang akan diproses.\\n"
+            "Ketik /batal untuk membatalkan."
         )
 
 
@@ -2212,7 +2235,7 @@ async def start_customer_command(update: Update, context: ContextTypes.DEFAULT_T
     if not user or not message:
         return
     if not is_owner(user.id):
-        await message.reply_text("⛔️ Fitur kelola customer hanya dapat digunakan oleh owner.")
+        await message.reply_text("⛔️ Fitur kelola data hanya dapat digunakan oleh owner.")
         return
 
     context.user_data.pop("customer_pending", None)
@@ -2435,7 +2458,7 @@ async def menu(
 
     if is_owner(update.effective_user.id):
         keyboard.append([
-            InlineKeyboardButton("👥 Kelola Customer (Owner)", callback_data="customer_manage")
+            InlineKeyboardButton("👥 Kelola Data", callback_data="customer_manage")
         ])
 
 
