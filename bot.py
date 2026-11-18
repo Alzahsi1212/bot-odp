@@ -895,11 +895,8 @@ async def start(
         "/info <ODP>\n"
         "/cari <RK>\n"
         "/piu <PIU>\n"
-        "/hist <Nama/SN/BRIM ID/CUST ID/PN>\n"
-        "/addcust - tambah customer (owner)\n"
-        "/editcust - edit customer (owner)\n"
-        "/delcust - hapus customer (owner)\n"
-        "/inputdatek - kirim foto dokumentasi ke topic DATEK (owner/level 2)"
+        "/hist <Nama/SN/BRIM ID/CUST ID/No Telpon/WA>\n"
+        "/inputdatek - kirim foto dokumentasi ke topic DATEK (owner/user level 2)"
     )
 
 
@@ -992,305 +989,179 @@ def build_cari_result(
 
 
 # =========================================================
-# BUILD CARI MESSAGE
+# PAGINATION DETAIL RK DAN PIU
 # =========================================================
 
-def build_cari_message(
-    hasil,
-    rk
-):
+ODP_PER_PAGE = 5
 
+
+def build_odp_pagination_keyboard(kind, owner_id, page, total_pages):
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(
+            "⬅️ Prev",
+            callback_data=f"odp_page:{kind}:{owner_id}:{page - 1}"
+        ))
+    if page < total_pages - 1:
+        navigation.append(InlineKeyboardButton(
+            "Next ➡️",
+            callback_data=f"odp_page:{kind}:{owner_id}:{page + 1}"
+        ))
+    return InlineKeyboardMarkup([navigation]) if navigation else None
+
+
+def build_cari_message(hasil, rk, page=0):
     first = hasil.iloc[0]
+    total_cust = sum(count_customer(row) for _, row in hasil.iterrows())
+    total_pages = max(1, (len(hasil) + ODP_PER_PAGE - 1) // ODP_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * ODP_PER_PAGE
+    page_hasil = hasil.iloc[start:start + ODP_PER_PAGE]
 
-    total_cust = 0
     list_text = ""
-
-    for _, row in hasil.iterrows():
-        nama_odp = str(row.get('Nama ODP', '-')).strip()
-        piu_name = str(row.get('PIU', '-')).strip()
+    for _, row in page_hasil.iterrows():
+        nama_odp = str(row.get("Nama ODP", "-")).strip()
+        piu_name = str(row.get("PIU", "-")).strip()
         jumlah_cust = count_customer(row)
-        total_cust += jumlah_cust
-
         list_text += (
             f"- {nama_odp}\n"
             f"  PIU         : {piu_name}\n"
             f"  Jumlah Customer : {jumlah_cust}\n\n"
         )
 
-    total_text = (
-        f"Total ODP  : {len(hasil)}\n"
-        f"Total Customer : {total_cust}\n\n"
-    )
-
-    text = (
+    start_number = start + 1
+    end_number = min(start + len(page_hasil), len(hasil))
+    return (
         f"📍 Detail RK {rk.upper()}\n\n"
         f"PIN      : {first.get('PIN', '-')}\n"
         f"Backbone : {first.get('Backbone', '-')}\n"
         f"Mcore    : {first.get('Mcore', '-')}\n"
         f"Tikor    : {first.get('Tikor', '-')}\n"
-        f"{total_text}"
-        f"List ODP:\n\n"
+        f"Total ODP  : {len(hasil)}\n"
+        f"Total Customer : {total_cust}\n"
+        f"Menampilkan ODP : {start_number}-{end_number}\n"
+        f"Halaman : {page + 1}/{total_pages}\n\n"
+        "List ODP:\n\n"
         + list_text
     )
 
-    return text
-
-
-# =========================================================
-# CARI RK
-# =========================================================
 
 @level2_required
-async def cari(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
+async def cari(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    message = update.message
-
+    message = update.effective_message
     if not user or not message:
         return
 
-
     if not context.args:
-
-        await message.reply_text(
-            "Format: /cari <RK>\n"
-            "Contoh: /cari GPK0"
-        )
-
+        await message.reply_text("Format: /cari <RK>\nContoh: /cari GPK0")
         return
-
 
     rk = context.args[0].strip()
-
-
     if not rk:
-
-        await message.reply_text(
-            "❌ RK tidak boleh kosong."
-        )
-
+        await message.reply_text("❌ RK tidak boleh kosong.")
         return
-
 
     try:
-
-        df = get_data()
-
+        hasil = build_cari_result(get_data(), rk)
     except Exception as e:
-
-        print(
-            "Gagal mengambil data ODP:",
-            e
-        )
-
-        await message.reply_text(
-            "❌ Gagal membaca data ODP."
-        )
-
+        print("Gagal mengambil data ODP:", e)
+        await message.reply_text("❌ Gagal membaca data ODP.")
         return
-
-
-    hasil = build_cari_result(
-        df,
-        rk
-    )
-
 
     if hasil.empty:
-
-        await message.reply_text(
-            "❌ RK tidak ditemukan."
-        )
-
+        await message.reply_text("❌ RK tidak ditemukan.")
         return
 
-
-    text = build_cari_message(
-        hasil,
-        rk
-    )
-
+    total_pages = max(1, (len(hasil) + ODP_PER_PAGE - 1) // ODP_PER_PAGE)
+    context.user_data["odp_page_session"] = {"kind": "rk", "key": rk}
+    text = build_cari_message(hasil, rk, 0)
+    markup = build_odp_pagination_keyboard("rk", user.id, 0, total_pages)
 
     chat = update.effective_chat
-
-    if not chat:
-        return
-
-
-    is_private = (
-        chat.type == "private"
-    )
-
-
-    if is_private:
-
-        await message.reply_text(
-            text
-        )
-
-        print(
-            f"[CARI] "
-            f"User={user.id} "
-            f"RK={rk} "
-            f"CHAT=PRIVATE"
-        )
-
-        return
-
-
-    try:
-
-        await message.reply_text(
-            "🔐 Hasil pencarian dikirim ke private chat Anda."
-        )
-
-    except Exception as e:
-
-        print(
-            "[CARI] Gagal mengirim notifikasi:",
-            e
-        )
-
-
-    try:
-
-        await context.bot.send_message(
-            chat_id=user.id,
-            text=text
-        )
-
-
-        print(
-            f"[CARI] "
-            f"Hasil RK={rk} berhasil dikirim "
-            f"ke private chat User={user.id}"
-        )
-
-
-    except Exception as e:
-
-        print(
-            f"[CARI] Gagal mengirim private message "
-            f"User={user.id}: {e}"
-        )
-
-
+    if chat and chat.type != "private":
         try:
-
+            await message.reply_text("🔐 Hasil pencarian dikirim ke private chat Anda.")
+            await context.bot.send_message(
+                chat_id=user.id, text=text, reply_markup=markup
+            )
+        except Exception as e:
+            print(f"[CARI] Gagal mengirim hasil/halaman ke private chat User={user.id}: {e}")
             await message.reply_text(
-                "⚠️ Saya tidak dapat mengirim hasil ke private chat Anda.\n\n"
-                "Silakan buka private chat bot ini lalu "
-                "tekan /start.\n"
-                "Setelah itu ulangi /cari <RK> di grup."
+                "⚠️ Saya tidak dapat mengirim hasil ke private chat Anda.\n"
+                "Silakan buka private chat bot lalu tekan /start, kemudian ulangi /cari."
             )
+        return
 
-        except Exception as notify_error:
-
-            print(
-                "[CARI] Gagal mengirim error:",
-                notify_error
-            )
+    await message.reply_text(text, reply_markup=markup)
 
 
 # =========================================================
-# BUILD PIU RESULT
+# BUILD PIU RESULT DAN MESSAGE
 # =========================================================
 
-def build_piu_result(
-    df,
-    piu
-):
-
+def build_piu_result(df, piu):
     mask = (
-        df["PIU"]
-        .astype(str)
-        .apply(normalize)
-        == normalize(piu)
+        df["PIU"].astype(str).apply(normalize) == normalize(piu)
     )
-
     return df[mask]
 
 
-# =========================================================
-# BUILD PIU MESSAGE
-# =========================================================
+def build_piu_message(hasil, piu, page=0):
+    total_cust = sum(count_customer(row) for _, row in hasil.iterrows())
+    total_pages = max(1, (len(hasil) + ODP_PER_PAGE - 1) // ODP_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * ODP_PER_PAGE
+    page_hasil = hasil.iloc[start:start + ODP_PER_PAGE]
 
-def build_piu_message(
-    hasil,
-    piu
-):
-
-    total_cust = 0
     list_text = ""
-
-    for _, row in hasil.iterrows():
+    for _, row in page_hasil.iterrows():
         nama_odp = str(row.get("Nama ODP", "-")).strip()
         rk = str(row.get("RK", "-")).strip()
         jumlah_cust = count_customer(row)
-        total_cust += jumlah_cust
-
         list_text += (
             f"- {nama_odp}\n"
             f"  RK          : {rk}\n"
             f"  Jumlah Customer : {jumlah_cust}\n\n"
         )
 
-    total_text = (
-        f"Total ODP  : {len(hasil)}\n"
-        f"Total Customer : {total_cust}\n\n"
-    )
-
-    text = (
+    start_number = start + 1
+    end_number = min(start + len(page_hasil), len(hasil))
+    return (
         f"📍 Detail PIU {piu.upper()}\n\n"
-        f"{total_text}"
-        f"List ODP:\n\n"
+        f"Total ODP  : {len(hasil)}\n"
+        f"Total Customer : {total_cust}\n"
+        f"Menampilkan ODP : {start_number}-{end_number}\n"
+        f"Halaman : {page + 1}/{total_pages}\n\n"
+        "List ODP:\n\n"
         + list_text
     )
 
-    return text
-
-
-# =========================================================
-# PIU
-# =========================================================
 
 @access_required
-async def piu(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
+async def piu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    message = update.message
-
+    message = update.effective_message
     if not user or not message:
         return
 
     if not context.args:
         await message.reply_text(
-            "Format: /piu <PIU>\n\n"
-            "Contoh:\n"
-            "/piu 0/1/4"
+            "Format: /piu <PIU>\n\nContoh:\n/piu 0/1/4"
         )
         return
 
     piu_name = context.args[0].strip()
-
     if not piu_name:
         await message.reply_text("❌ PIU tidak boleh kosong.")
         return
 
     try:
-        df = get_data()
+        hasil = build_piu_result(get_data(), piu_name)
     except Exception as e:
         print("Gagal mengambil data ODP:", e)
         await message.reply_text("❌ Gagal membaca data ODP.")
         return
-
-    hasil = build_piu_result(df, piu_name)
 
     if hasil.empty:
         await message.reply_text(
@@ -1299,22 +1170,63 @@ async def piu(
         )
         return
 
-    text = build_piu_message(hasil, piu_name)
-    max_length = 4000
+    total_pages = max(1, (len(hasil) + ODP_PER_PAGE - 1) // ODP_PER_PAGE)
+    context.user_data["odp_page_session"] = {"kind": "piu", "key": piu_name}
+    text = build_piu_message(hasil, piu_name, 0)
+    markup = build_odp_pagination_keyboard("piu", user.id, 0, total_pages)
+    await message.reply_text(text, reply_markup=markup)
 
-    if len(text) <= max_length:
-        await message.reply_text(text)
+
+async def odp_page_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query or not query.data:
         return
 
-    current = ""
-    for line in text.splitlines(keepends=True):
-        if len(current) + len(line) > max_length:
-            await message.reply_text(current)
-            current = ""
-        current += line
+    try:
+        _, kind, owner_id, page = query.data.split(":")
+        owner_id = int(owner_id)
+        page = int(page)
+    except (ValueError, TypeError):
+        await query.answer("❌ Tombol tidak valid.", show_alert=True)
+        return
 
-    if current:
-        await message.reply_text(current)
+    user = query.from_user
+    if user.id != owner_id:
+        await query.answer("⛔️ Tombol ini bukan untuk Anda.", show_alert=True)
+        return
+
+    session = context.user_data.get("odp_page_session") or {}
+    expected_kind = "rk" if kind == "rk" else "piu"
+    if session.get("kind") != expected_kind or not session.get("key"):
+        await query.answer("❌ Sesi pagination sudah berakhir. Jalankan ulang command.", show_alert=True)
+        return
+
+    try:
+        df = get_data()
+        key = session["key"]
+        hasil = build_cari_result(df, key) if kind == "rk" else build_piu_result(df, key)
+    except Exception as e:
+        print("[ODP PAGE] Gagal membaca data:", e)
+        await query.answer("❌ Gagal membaca data ODP.", show_alert=True)
+        return
+
+    if hasil.empty:
+        await query.answer("❌ Data tidak ditemukan.", show_alert=True)
+        return
+
+    total_pages = max(1, (len(hasil) + ODP_PER_PAGE - 1) // ODP_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    text = (
+        build_cari_message(hasil, key, page)
+        if kind == "rk"
+        else build_piu_message(hasil, key, page)
+    )
+    markup = build_odp_pagination_keyboard(kind, user.id, page, total_pages)
+    await query.answer()
+    try:
+        await query.edit_message_text(text=text, reply_markup=markup)
+    except Exception as e:
+        print("[ODP PAGE] Gagal memperbarui halaman:", e)
 
 
 # =========================================================
@@ -1423,7 +1335,7 @@ async def hist(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• SN → sama persis\n"
             "• BRIM ID → sama persis\n"
             "• CUST ID → sama persis\n"
-            "• PN → seluruh atau sebagian nomor telepon/WhatsApp\n"
+            "• No Telpon/WA → seluruh atau sebagian nomor telepon/WhatsApp\n"
             "  Spasi, +, dan tanda hubung diabaikan; +62 dan 62 dapat digunakan.\n\n"
             "Contoh:\n"
             "/hist budi\n"
@@ -3714,6 +3626,12 @@ def main():
         )
     )
 
+
+    # Pagination untuk detail RK dan PIU (maksimal 5 ODP per halaman).
+    app.add_handler(CallbackQueryHandler(
+        odp_page_handler,
+        pattern=r"^odp_page:"
+    ))
 
     # =====================================================
     # CUSTOMER MANAGEMENT CALLBACK (OWNER ONLY)
