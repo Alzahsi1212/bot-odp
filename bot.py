@@ -13,7 +13,8 @@ from telegram import (
     Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InputMediaPhoto
+    InputMediaPhoto,
+    ForceReply
 )
 
 from telegram.ext import (
@@ -69,6 +70,11 @@ CUSTOMER_URL = (
 # Isi melalui Environment Variables di Railway: CUSTOMER_WRITE_URL dan CUSTOMER_WRITE_SECRET.
 CUSTOMER_WRITE_URL = "https://script.google.com/macros/s/AKfycbwDBCMAfXknlYDlIeJmVhEeAGlMhuaVRUn0OIo6X6NSjZWSC0mHYKJlwuolqL8Gm3D0/exec"
 CUSTOMER_WRITE_SECRET = "bumibulat12"
+
+# Endpoint Apps Script khusus untuk mengubah kolom Port1-Port16 pada Sheet ODP.
+# Isi melalui Environment Variables di Railway.
+ODP_WRITE_URL = "https://script.google.com/macros/s/AKfycbw2RQ-lQtyJ4z5QTMMAvgR6PHUZPjFiVg0KxEj9gxf_6Kpi_0LT1yZ1CfHfLMVsiMZP/exec"
+ODP_WRITE_SECRET = "bumidatar12"
 
 CUSTOMER_COLUMNS = [
     "Tim", "Tanggal", "Nama", "BRIM ID", "CUST ID", "SN",
@@ -2221,6 +2227,11 @@ async def customer_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         cancelled = True
 
+    if context.user_data.pop("odp_edit_pending", None):
+        context.user_data.pop("odp_edit_session", None)
+        await message.reply_text("❎ Proses edit port ODP dibatalkan.")
+        cancelled = True
+
     if context.user_data.pop("customer_mode", None):
         context.user_data.pop("customer_pending", None)
         await message.reply_text("✅ Proses pengelolaan customer dibatalkan.")
@@ -2365,6 +2376,265 @@ async def customer_delete_confirm_callback(update: Update, context: ContextTypes
     except Exception as e:
         print("[CUSTOMER DELETE]", repr(e))
         await query.edit_message_text(f"❌ Gagal menghapus customer:\n{e}")
+
+
+
+
+# =========================================================
+# EDIT DATA PORT ODP (OWNER DAN USER LEVEL 2)
+# =========================================================
+
+ODP_EDIT_PORTS_PER_PAGE = 6
+
+
+def get_odp_row_by_name(odp_name):
+    """Ambil satu baris ODP berdasarkan Nama ODP dari data terbaru."""
+    df = pd.read_csv(
+        URL,
+        dtype={column: str for column in ["PIN"] + ODP_PORT_COLUMNS}
+    ).fillna("")
+    if "Nama ODP" not in df.columns:
+        raise RuntimeError("Kolom 'Nama ODP' tidak ditemukan pada Sheet ODP.")
+    match = df[
+        df["Nama ODP"].astype(str).str.strip().str.upper()
+        == str(odp_name).strip().upper()
+    ]
+    if match.empty:
+        return None
+    if len(match) > 1:
+        raise RuntimeError(f"Ditemukan lebih dari satu baris dengan Nama ODP {odp_name}.")
+    return match.iloc[0].to_dict()
+
+
+def write_odp_port(odp_name, port, value):
+    """Kirim perubahan satu port ke Apps Script khusus Sheet ODP."""
+    if not ODP_WRITE_URL or not ODP_WRITE_SECRET:
+        raise RuntimeError(
+            "ODP_WRITE_URL dan ODP_WRITE_SECRET belum diatur di Environment Variables Railway."
+        )
+    if port not in ODP_PORT_COLUMNS:
+        raise ValueError("Nama port tidak valid.")
+    payload = {
+        "secret": ODP_WRITE_SECRET,
+        "action": "edit_odp_port",
+        "odp_name": str(odp_name).strip(),
+        "port": port,
+        "value": str(value).strip()
+    }
+    response = requests.post(ODP_WRITE_URL, json=payload, timeout=30)
+    response.raise_for_status()
+    try:
+        result = response.json()
+    except ValueError:
+        raise RuntimeError("Respons Apps Script bukan JSON: " + response.text[:300])
+    if not result.get("ok"):
+        raise RuntimeError(result.get("error", "Gagal memperbarui port ODP."))
+    global cached_df
+    cached_df = None
+    return result
+
+
+def build_odp_edit_port_keyboard(odp_name, row, owner_id, page=0):
+    """Buat tombol port 6 per halaman; label menampilkan Cust ID jika terisi."""
+    total_pages = (len(ODP_PORT_COLUMNS) + ODP_EDIT_PORTS_PER_PAGE - 1) // ODP_EDIT_PORTS_PER_PAGE
+    page = max(0, min(page, total_pages - 1))
+    start = page * ODP_EDIT_PORTS_PER_PAGE
+    keyboard = []
+    for port in ODP_PORT_COLUMNS[start:start + ODP_EDIT_PORTS_PER_PAGE]:
+        current = str(row.get(port, "") or "").strip()
+        if current and "/" in current:
+            cust_id = current.split("/", 1)[0].strip()
+        else:
+            cust_id = current
+        label = f"{port} - {cust_id}" if current else f"{port} - "
+        keyboard.append([InlineKeyboardButton(
+            label[:60],
+            callback_data=f"odpedit_port:{owner_id}:{port}"
+        )])
+    navigation = []
+    if page > 0:
+        navigation.append(InlineKeyboardButton(
+            "⬅️ Prev", callback_data=f"odpedit_page:{owner_id}:{page - 1}"
+        ))
+    if page < total_pages - 1:
+        navigation.append(InlineKeyboardButton(
+            "Next ➡️", callback_data=f"odpedit_page:{owner_id}:{page + 1}"
+        ))
+    if navigation:
+        keyboard.append(navigation)
+    keyboard.append([InlineKeyboardButton(
+        "❌ Tutup", callback_data=f"odpedit_close:{owner_id}"
+    )])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def build_odp_edit_port_text(odp_name, row, page=0):
+    total_pages = (len(ODP_PORT_COLUMNS) + ODP_EDIT_PORTS_PER_PAGE - 1) // ODP_EDIT_PORTS_PER_PAGE
+    start = page * ODP_EDIT_PORTS_PER_PAGE + 1
+    end = min(start + ODP_EDIT_PORTS_PER_PAGE - 1, len(ODP_PORT_COLUMNS))
+    return (
+        f"🛠 EDIT PORT ODP: {odp_name}\n\n"
+        f"Halaman {page + 1}/{total_pages} | Port {start}-{end}\n"
+        "Pilih port yang ingin ditambah/diubah.\n"
+        "Port yang sudah terisi menampilkan Cust ID pada nama tombol."
+    )
+
+
+async def editodp(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    message = update.effective_message
+    if not user or not message:
+        return
+    if not (is_owner(user.id) or is_level2(user.id)):
+        await message.reply_text("⛔️ Perintah /editodp hanya dapat digunakan oleh owner dan user Level 2.")
+        return
+    if not context.args:
+        await message.reply_text("Format: /editodp <Nama ODP>\nContoh: /editodp LTU110101")
+        return
+    odp_name = " ".join(context.args).strip()
+    try:
+        row = get_odp_row_by_name(odp_name)
+    except Exception as e:
+        await message.reply_text(f"❌ Gagal membaca data ODP:\n{e}")
+        return
+    if row is None:
+        await message.reply_text(f"❌ ODP {odp_name} tidak ditemukan.")
+        return
+    context.user_data["odp_edit_session"] = {
+        "odp_name": str(row.get("Nama ODP", odp_name)).strip(),
+        "page": 0
+    }
+    await message.reply_text(
+        build_odp_edit_port_text(odp_name, row, 0),
+        reply_markup=build_odp_edit_port_keyboard(odp_name, row, user.id, 0)
+    )
+
+
+async def odp_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query or not query.data:
+        return
+    user = query.from_user
+    parts = query.data.split(":")
+    action = parts[0]
+    try:
+        owner_id = int(parts[1])
+    except (IndexError, ValueError):
+        await query.answer("Tombol tidak valid.", show_alert=True)
+        return
+    if user.id != owner_id:
+        await query.answer("⛔️ Tombol ini bukan untuk Anda.", show_alert=True)
+        return
+    if not (is_owner(user.id) or is_level2(user.id)):
+        await query.answer("⛔️ Khusus owner dan user Level 2.", show_alert=True)
+        return
+    session = context.user_data.get("odp_edit_session") or {}
+    odp_name = session.get("odp_name")
+    if not odp_name:
+        await query.answer("Sesi edit berakhir. Jalankan /editodp lagi.", show_alert=True)
+        return
+
+    if action == "odpedit_close":
+        context.user_data.pop("odp_edit_session", None)
+        context.user_data.pop("odp_edit_pending", None)
+        await query.answer()
+        await query.edit_message_text("❎ Menu edit port ditutup.")
+        return
+
+    if action == "odpedit_page":
+        try:
+            page = int(parts[2])
+            row = get_odp_row_by_name(odp_name)
+            if row is None:
+                raise RuntimeError("ODP tidak ditemukan.")
+            page = max(0, min(page, 2))
+            session["page"] = page
+            await query.answer()
+            await query.edit_message_text(
+                build_odp_edit_port_text(odp_name, row, page),
+                reply_markup=build_odp_edit_port_keyboard(odp_name, row, user.id, page)
+            )
+        except Exception as e:
+            await query.answer(f"Gagal memuat halaman: {e}", show_alert=True)
+        return
+
+    if action == "odpedit_port":
+        port = parts[2] if len(parts) > 2 else ""
+        if port not in ODP_PORT_COLUMNS:
+            await query.answer("Port tidak valid.", show_alert=True)
+            return
+        try:
+            row = get_odp_row_by_name(odp_name)
+            if row is None:
+                raise RuntimeError("ODP tidak ditemukan.")
+            current = str(row.get(port, "") or "").strip()
+            context.user_data["odp_edit_pending"] = {"odp_name": odp_name, "port": port}
+            await query.answer()
+            await query.message.reply_text(
+                f"✏️ EDIT {port} — {odp_name}\n\n"
+                f"Nilai saat ini: {current or '(kosong)'}\n\n"
+                "Kirim nilai dengan format:\n"
+                "`1002843060/4857544301698FB8`\n\n"
+                "Format: CUST ID/SN ONT\n"
+                "Kirim KOSONGKAN (tanpa garis miring) untuk menghapus isi port, atau /batal untuk membatalkan.",
+                parse_mode="Markdown",
+                reply_markup=ForceReply(selective=True)
+            )
+        except Exception as e:
+            await query.answer(f"Gagal membuka port: {e}", show_alert=True)
+
+
+async def odp_edit_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    message = update.effective_message
+    if not user or not message or not message.text:
+        return
+    pending = context.user_data.get("odp_edit_pending")
+    if not pending:
+        return
+    if not (is_owner(user.id) or is_level2(user.id)):
+        context.user_data.pop("odp_edit_pending", None)
+        return
+    raw = message.text.strip()
+    if raw.lower() in {"/batal", "/cancel"}:
+        context.user_data.pop("odp_edit_pending", None)
+        await message.reply_text("❎ Edit port dibatalkan.")
+        return
+    if raw.lower() == "kosongkan":
+        value = ""
+    else:
+        if raw.count("/") != 1:
+            await message.reply_text(
+                "❌ Format tidak sesuai. Gunakan CUST ID/SN ONT.\n"
+                "Contoh: 1002843060/4857544301698FB8\n"
+                "Kirim ulang atau /batal."
+            )
+            return
+        cust_id, sn = [part.strip() for part in raw.split("/", 1)]
+        if not cust_id or not sn:
+            await message.reply_text("❌ CUST ID dan SN ONT wajib terisi. Kirim ulang atau /batal.")
+            return
+        value = f"{cust_id}/{sn}"
+    try:
+        write_odp_port(pending["odp_name"], pending["port"], value)
+        context.user_data.pop("odp_edit_pending", None)
+        row = get_odp_row_by_name(pending["odp_name"]) or {}
+        page = int((context.user_data.get("odp_edit_session") or {}).get("page", 0))
+        await message.reply_text(
+            f"✅ {pending['port']} pada {pending['odp_name']} berhasil "
+            f"{'dikosongkan' if not value else 'diperbarui'}.\n"
+            f"Nilai: {value or '(kosong)'}"
+        )
+        await message.reply_text(
+            build_odp_edit_port_text(pending["odp_name"], row, page),
+            reply_markup=build_odp_edit_port_keyboard(
+                pending["odp_name"], row, user.id, page
+            )
+        )
+    except Exception as e:
+        print("[EDIT ODP]", repr(e))
+        await message.reply_text(f"❌ Gagal memperbarui port:\n{e}")
+
 
 
 # =========================================================
@@ -3540,6 +3810,7 @@ def main():
     app.add_handler(CommandHandler("addcust", addcust))
     app.add_handler(CommandHandler("editcust", editcust))
     app.add_handler(CommandHandler("delcust", delcust))
+    app.add_handler(CommandHandler("editodp", editodp))
     app.add_handler(CommandHandler("inputdatek", inputdatek))
     app.add_handler(CommandHandler("selesai", inputdatek_finish))
 
@@ -3646,6 +3917,10 @@ def main():
         customer_delete_confirm_callback,
         pattern=r"^customer_delete_(?:confirm|cancel)$"
     ))
+
+    # Callback dan input teks untuk fitur edit port ODP.
+    app.add_handler(CallbackQueryHandler(odp_edit_callback, pattern=r"^odpedit_(?:page|port|close):"))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, odp_edit_text_handler), group=1)
 
     # Foto yang dikirim selama sesi /inputdatek dikumpulkan per album lalu diteruskan utuh.
     app.add_handler(MessageHandler(filters.PHOTO, inputdatek_photo_handler))
